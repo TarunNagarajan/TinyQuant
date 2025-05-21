@@ -1,109 +1,205 @@
 # TinyPolicy
-A fast, quantized neural policy execution runtime in C++ for embedded and real-time control systems.
 
-| Day    | Task                                                      | Technical Goals                                               | Learning Objectives                                 |
-| ------ | --------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
-| **1**  | Initialize GitHub repo and folder structure               | Create `runtime/`, `models/`, `scripts/`, `benchmarks/`, etc. | Learn clean codebase layout for embedded ML systems |
-| **2**  | Set up CMake (C++) or Cargo (Rust), basic build test      | Add `main.cpp`, test compilation                              | Build system fluency, binary entrypoint             |
-| **3**  | Train a small 2-layer MLP in PyTorch                      | Inputs: angle, velocity; Output: torque                       | Tiny control policy generation                      |
-| **4**  | Export MLP as ONNX and raw binary format (weights only)   | `torch.onnx.export()` and/or `.npy/.bin` file                 | ML model export formats                             |
-| **5**  | Write Python script to export model config (layers, dims) | Output a `.json` or `.cfg` metadata file                      | Format abstraction between training/runtime         |
-| **6**  | Document model formats (ONNX, raw weights, metadata)      | In `README.md` and `models/README.md`                         | Project documentation, reproducibility              |
-| **7**  | Write `model_loader.hpp`: loads raw weights + metadata    | Store as aligned `std::vector<float>`                         | Binary parsing, file I/O                            |
-| **8**  | Parse ONNX format using flatbuffer/ONNX-CPP or skip       | Optional advanced ONNX loader                                 | ONNX internals (if needed)                          |
-| **9**  | Test model loader with dummy input                        | Validate layer sizes, weight matrix shapes                    | Defensive coding, unit sanity                       |
-| **10** | Add activation functions (ReLU, tanh)                     | Pure `inline` C++ functions                                   | Functional modeling                                 |
-| **11** | Write `inference_engine.hpp`: MLP forward pass            | Matrix-vector multiplication, layer traversal                 | Manual NN inference flow                            |
-| **12** | Optimize inference loop: reduce heap allocs               | Use stack preallocation / buffers                             | Memory-efficient loop design                        |
-| **13** | Simulate single policy inference step                     | Feed random input, print output                               | Validate correctness                                |
-| **14** | Add `main.cpp`: simple CLI that loads and infers          | Input from command line or file                               | Interface design, CLI handling                      |
-| **15** | Create `test_inference.cpp` unit test                     | Validate outputs for known weights                            | Unit testing basics                                 |
-| **16** | Add real-time scheduler loop: tick every 10ms             | Use `chrono::steady_clock` or `std::thread::sleep`            | Timer accuracy, real-time behavior                  |
-| **17** | Simulate control input: `angle`, `velocity` from CSV      | Input reading and loop integration                            | Input preprocessing, CSV parsing                    |
-| **18** | Apply NN output to a simple system: θ(t+1) = θ(t) + v\*dt | Simulated control effect                                      | Control dynamics understanding                      |
-| **19** | Log outputs to CSV for plotting                           | Add simple CSV logger                                         | Log-based debugging                                 |
-| **20** | Plot results: angle over time, torque values              | Use Python/matplotlib                                         | Visualization for control behavior                  |
-| **21** | Add noise to inputs (sensor emulation)                    | Random Gaussian noise                                         | Sensor modeling, noise robustness                   |
-| **22** | Tune controller behavior by retraining NN                 | Adjust training reward / loss                                 | ML-controller tuning cycle                          |
-| **23** | Write `scheduler.hpp`: wraps loop and timing              | Modularize real-time loop                                     | Modular design patterns                             |
-| **24** | Refactor loop into: sensor → model → actuator → update    | Clear system architecture                                     | Loop control best practices                         |
-| **25** | Add JSON config file for loop rate, model path            | Use `nlohmann/json` or similar                                | Config loading in C++                               |
-| **26** | Parse and apply config at runtime                         | Validate CLI + config fallback                                | Robust runtime boot sequence                        |
-| **27** | Add logging level controls (info/debug)                   | Implement simple log macro                                    | Logging frameworks                                  |
-| **28** | Begin quantized mode: implement fake quantizer            | `float32 → int8` linear transform                             | Quantization intuition                              |
-| **29** | Replace float weights with `int8_t`, dequant on load      | Simulate INT8 inference                                       | Memory compression awareness                        |
-| **30** | Compare float vs quantized outputs                        | Validate tolerable error                                      | Precision benchmarking                              |
-| **31** | Implement fixed-point math for inference                  | Use Q15 format: `int16_t` with scale                          | Manual fixed-point DSP-style ops                    |
-| **32** | Add timing macros to profile ops                          | Measure per-layer latency                                     | Microbenchmarking skills                            |
-| **33** | Write `latency_test.cpp` to profile full inference        | Compare float vs quantized                                    | Benchmark pipeline flow                             |
-| **34** | Use `valgrind` or `perf` to track memory and CPU          | Full-system resource profiling                                | Systems-level performance                           |
-| **35** | Optional: flamegraph generation for hot paths             | Use `perf script` and flamegraph.pl                           | CPU time analysis                                   |
-| **36** | Add option for warm-up iterations                         | Handle cold-start vs warm-run latency                         | Runtime benchmarking practices                      |
-| **37** | Try memory pooling (optional)                             | Avoid allocs in inference path                                | Memory management techniques                        |
-| **38** | Simulate varying tick rates (5ms–50ms)                    | Stress test control loop                                      | Timing sensitivity analysis                         |
-| **39** | Create CLI switch for real-time vs batch mode             | Support offline benchmarks                                    | Flexible usage modes                                |
-| **40** | Add `make benchmark` or `cargo bench` target              | Streamlined measurement workflow                              | Build pipeline ergonomics                           |
-| **41** | Inject failure cases (NaN input, file missing)            | Improve error handling                                        | Defensive engineering                               |
-| **42** | Write `test_scheduler.cpp`: check tick accuracy           | Timer jitter test                                             | Real-time accuracy validation                       |
-| **43** | Create full `tests/` suite                                | Organize, add Makefile target                                 | Testing coverage                                    |
-| **44** | Auto-run tests with CI (GitHub Actions optional)          | Test automation                                               | GitHub workflows                                    |
-| **45** | Add inline docs to every function                         | Doxygen-compatible comments                                   | API clarity, professional polish                    |
-| **46** | Draw system diagram: input → policy → actuator            | SVG or PNG                                                    | Visual documentation                                |
-| **47** | Add `README.md`: overview, usage, architecture            | Full documentation draft                                      | Technical writing                                   |
-| **48** | Add example output plots (`plots/`)                       | Torque/angle/time series                                      | Show don't tell                                     |
-| **49** | Test on low-power mode: simulate slow CPU                 | Limit cores, simulate embedded                                | Performance realism                                 |
-| **50** | (Optional) Compile for ARM with cross-compiler            | `arm-linux-gnueabihf-g++`                                     | Embedded toolchain                                  |
-| **51** | Refactor for minimal runtime footprint                    | Goal: <100KB binary                                           | Embedded readiness                                  |
-| **52** | Package minimal release zip/tar.gz                        | CLI tool ready to ship                                        | Real-world deployment exercise                      |
-| **53** | Record screen of CLI + plots                              | Show simulated control loop                                   | Demo creation                                       |
-| **54** | Write `examples/` folder: sensor sim + loop               | Extra demos                                                   | Showcase behavior                                   |
-| **55** | (Optional) Add WASM target                                | Compile for browser                                           | Web runtime portability                             |
-| **56** | (Optional) Write a blog explaining the architecture       | Share online                                                  | Technical storytelling                              |
-| **57** | Final testing + bugfixes                                  | All modules reviewed                                          | Ship-ready confidence                               |
-| **58** | Polish all docs, add badges, finalize license             | OSS best practices                                            | GitHub portfolio boost                              |
-| **59** | Push final commit, write detailed commit message          | Ship milestone v1.0                                           | Versioning                                          |
+An industrial-grade neural policy execution framework for resource-constrained embedded systems requiring deterministic, real-time control with safety guarantees.
 
-TinyPolicy/
-├── runtime/                # Core C++ inference engine & scheduler
-│   ├── main.cpp            # Entry point: loads model, runs loop
-│   ├── inference.hpp       # MLP forward pass (quantized, float, etc.)
-│   ├── scheduler.hpp       # Real-time tick manager
-│   ├── model_loader.hpp    # Parses weights/config from file
-│   ├── activations.hpp     # ReLU, tanh, etc.
-│   └── utils.hpp           # Logging, timing macros, etc.
+## Core Enhancements
+
+| Category | Original TinyPolicy | TinyPolicy Pro |
+|----------|-------------------|----------------|
+| **Model Support** | Simple MLP only | MLPs, LSTMs, TCNs, GRUs, custom fusion models |
+| **Safety** | Basic error handling | Formal verification, OOD detection, watchdog integration |
+| **Performance** | Float/int8 | SIMD vectorization, ARM CMSIS-NN, mixed precision (int4/8/16) |
+| **Deployment** | Simple CLI | RTOS integration, bare-metal support, hardware acceleration |
+| **Verification** | Unit tests | Formal verification, conformance testing, performance contracts |
+| **Integration** | Standalone | CAN bus, EtherCAT, MQTT, ROS2 compatibility |
+| **Systems** | Single-threaded | Real-time scheduler, multi-core support, heterogeneous compute |
+
+## Project Timeline (12-week professional development cycle)
+
+### Phase 1: Core Architecture (Weeks 1-3)
+
+| Week | Task | Technical Goals | Production Features |
+|------|------|----------------|---------------------|
+| **1** | System Architecture & Safety Design | Core architecture with formal verification hooks | Safety documentation, MISRA-C++ compliance plan |
+| **2** | Enhanced Model Support Framework | Model format abstraction layer supporting quantized LSTM/TCN | Model versioning, signature validation |
+| **3** | Advanced Quantization Pipeline | Per-channel quantization, mixed precision support | Automated calibration, error bound guarantees |
+
+### Phase 2: Performance & Safety (Weeks 4-6)
+
+| Week | Task | Technical Goals | Production Features |
+|------|------|----------------|---------------------|
+| **4** | Platform Optimization | ARM NEON/CMSIS integration, SIMD optimization | CPU profiling tools, power consumption analysis |
+| **5** | Safety Monitoring Framework | OOD detection, input validation, uncertainty estimation | Runtime safety monitor, anomaly detection |
+| **6** | Formal Verification Integration | Pre/post condition checking, bounded verification | Safety envelope enforcement, provable guarantees |
+
+### Phase 3: Integration & Tooling (Weeks 7-9)
+
+| Week | Task | Technical Goals | Production Features |
+|------|------|----------------|---------------------|
+| **7** | Hardware Interface Layer | Sensor fusion preprocessing, actuator output conditioning | Device abstraction, multi-bus support |
+| **8** | RTOS Integration | FreeRTOS/Zephyr compatibility, deterministic scheduling | Task prioritization, deadline monitoring |
+| **9** | Model Calibration Suite | Automated testing across operational domain | Performance envelope mapping, certification reports |
+
+### Phase 4: Production Readiness (Weeks 10-12)
+
+| Week | Task | Technical Goals | Production Features |
+|------|------|----------------|---------------------|
+| **10** | Deployment Pipeline | OTA update capability, A/B model switching | Rollback support, atomic updates |
+| **11** | Certification Package | Pre-certification materials, test coverage | Documentation for ISO 26262, IEC 61508 |
+| **12** | Field Testing Framework | Record/replay capability, regression testing | Operational validation suite |
+
+## Enhanced Architecture
+
+```
+TinyPolicyPro/
+├── runtime/                     # Core runtime modules with hardware abstraction
+│   ├── core/                    # Core inference engine
+│   │   ├── inference_engine.hpp # Handles multiple model types, vectorized
+│   │   ├── model_registry.hpp   # Dynamic model loading/unloading
+│   │   ├── tensor_ops/          # Optimized tensor operations
+│   │   │   ├── simd_ops.hpp     # SIMD-accelerated operations
+│   │   │   ├── arm_neon.hpp     # ARM-specific optimizations
+│   │   │   └── quantized_ops.hpp # Mixed-precision operations
+│   │   ├── models/              # Model type implementations
+│   │   │   ├── mlp.hpp          # Basic MLP implementation
+│   │   │   ├── lstm.hpp         # LSTM cell implementation
+│   │   │   ├── tcn.hpp          # Temporal Conv Network
+│   │   │   └── gru.hpp          # GRU cell implementation
+│   │   └── activations/         # Activation functions with optimized implementations
+│   │
+│   ├── safety/                  # Safety monitoring systems
+│   │   ├── ood_detector.hpp     # Out-of-distribution detection
+│   │   ├── uncertainty.hpp      # Uncertainty estimation
+│   │   ├── bounds_checker.hpp   # Input/output bounds verification
+│   │   ├── watchdog.hpp         # Execution watchdog
+│   │   └── fault_handler.hpp    # Fault detection and recovery
+│   │
+│   ├── platform/                # Platform abstraction
+│   │   ├── memory.hpp           # Memory management and pools
+│   │   ├── threading.hpp        # Thread management for multi-core
+│   │   ├── timing.hpp           # High-precision timing
+│   │   └── hardware/            # Hardware-specific optimizations
+│   │       ├── arm_cortex.hpp   # ARM Cortex-M specific code
+│   │       ├── x86_64.hpp       # x86-64 specific optimizations
+│   │       └── gpu_accel.hpp    # Optional GPU acceleration
+│   │
+│   ├── scheduler/               # Advanced scheduler
+│   │   ├── rt_executor.hpp      # Real-time execution guarantees
+│   │   ├── task_manager.hpp     # Priority-based scheduling
+│   │   ├── deadlines.hpp        # Deadline monitoring
+│   │   └── power_manager.hpp    # Power/performance modes
+│   │
+│   └── io/                      # I/O systems
+│       ├── sensor_manager.hpp   # Sensor abstraction and fusion
+│       ├── actuator_control.hpp # Actuator management with safety limiters
+│       ├── bus/                 # Communication buses
+│       │   ├── can.hpp          # CAN bus interface
+│       │   ├── ethercat.hpp     # EtherCAT support
+│       │   └── modbus.hpp       # ModBus protocol
+│       └── networking/          # Networking capabilities
+│           ├── mqtt_client.hpp  # MQTT support for telemetry
+│           └── ros2_bridge.hpp  # ROS2 compatibility layer
 │
-├── models/                 # Saved model weights and configs
-│   ├── tiny_policy.onnx    # Exported from PyTorch
-│   ├── weights.bin         # Raw binary weights
-│   ├── metadata.json       # Layer sizes, scale, zero-points
-│   └── README.md
+├── models/                      # Model storage with versioning
+│   ├── format/                  # Format specifications
+│   │   ├── tpn_format.md        # TinyPolicy Native format spec
+│   │   ├── converter.hpp        # Format conversion tools
+│   │   └── validator.hpp        # Model validation tools
+│   │
+│   ├── versioning/              # Model versioning system
+│   │   ├── model_registry.json  # Model tracking database
+│   │   ├── compatibility.hpp    # Version compatibility checking
+│   │   └── signatures.hpp       # Cryptographic signatures
+│   │
+│   └── examples/                # Example models
+│       ├── pendulum/            # Pendulum control models
+│       ├── robotarm/            # Robot arm control
+│       └── quadcopter/          # Drone stabilization
 │
-├── scripts/                # Python tools (training, export, plotting)
-│   ├── train_policy.py     # Tiny MLP for simple control task
-│   ├── export_to_onnx.py   # Converts to ONNX and raw format
-│   ├── plot_logs.py        # Reads CSV log, plots outputs
-│   └── generate_inputs.py  # Simulates noisy sensor inputs
+├── tools/                       # Advanced tooling
+│   ├── training/                # Training pipelines 
+│   │   ├── pytorch/             # PyTorch training
+│   │   │   ├── train_hybrid.py  # Hybrid model training
+│   │   │   └── distillation.py  # Knowledge distillation
+│   │   ├── tensorflow/          # TensorFlow training
+│   │   └── onnx/                # ONNX utilities
+│   │
+│   ├── calibration/             # Calibration tools
+│   │   ├── quantizer.py         # Advanced quantization tools
+│   │   ├── sensitivity.py       # Sensitivity analysis
+│   │   └── error_analysis.py    # Error propagation analysis
+│   │
+│   ├── verification/            # Verification suite
+│   │   ├── formal_verifier.py   # Formal verification tools
+│   │   ├── property_checker.py  # Property checking
+│   │   └── test_generator.py    # Auto test generation
+│   │
+│   ├── profiling/               # Performance analysis
+│   │   ├── latency_profiler.cpp # Detailed timing analysis
+│   │   ├── memory_analyzer.cpp  # Memory usage analysis
+│   │   └── power_profiler.cpp   # Power consumption analysis
+│   │
+│   └── deployment/              # Deployment tools
+│       ├── packaging.py         # Release packaging
+│       ├── ota_update.py        # OTA update generation
+│       └── rollback.py          # Rollback image creation
 │
-├── benchmarks/             # Benchmark + profiling utilities
-│   ├── latency_test.cpp
-│   ├── mem_profile.md
-│   └── perf_results.csv
+├── tests/                       # Comprehensive test suite
+│   ├── unit/                    # Unit tests for components
+│   ├── integration/             # Integration tests
+│   ├── system/                  # System-level tests
+│   │   ├── safety/              # Safety verification tests
+│   │   ├── performance/         # Performance benchmark tests
+│   │   └── reliability/         # Reliability tests
+│   │
+│   ├── conformance/             # Standard conformance tests
+│   │   ├── iso26262/            # ISO 26262 test cases
+│   │   └── misra/               # MISRA compliance tests
+│   │
+│   └── fixtures/                # Test data and fixtures
+│       ├── models/              # Test models
+│       ├── traces/              # Input traces for replay
+│       └── expected_outputs/    # Golden output files
 │
-├── tests/                  # Unit tests for components
-│   ├── test_inference.cpp
-│   ├── test_scheduler.cpp
-│   └── test_loader.cpp
+├── examples/                    # Implementation examples
+│   ├── simple_control/          # Basic control examples
+│   ├── advanced/                # Advanced use cases
+│   │   ├── hybrid_control/      # Hybrid ML/classical control
+│   │   ├── adaptive_system/     # Adaptive control example
+│   │   └── safety_envelope/     # Safety-bounded control
+│   └── platforms/               # Platform-specific examples
+│       ├── arduino/             # Arduino implementation
+│       ├── stm32/               # STM32 implementation
+│       └── raspberry_pi/        # Raspberry Pi example
 │
-├── data/                   # Sample inputs for inference
-│   ├── inputs.csv
-│   └── outputs_expected.csv
+├── docs/                        # Comprehensive documentation
+│   ├── api/                     # API documentation
+│   ├── guides/                  # Implementation guides
+│   ├── safety/                  # Safety documentation
+│   │   ├── certification/       # Certification guidance
+│   │   ├── validation/          # Validation procedures
+│   │   └── risk_analysis/       # Risk analysis methodology
+│   └── performance/             # Performance guidance
 │
-├── plots/                  # Output plots (generated from logs)
-│   ├── angle_vs_time.png
-│   ├── torque_output.png
-│   └── README.md
+├── benchmarks/                  # Advanced benchmarking
+│   ├── platforms/               # Platform comparison benchmarks
+│   ├── models/                  # Model performance benchmarks
+│   └── safety/                  # Safety verification benchmarks
 │
-├── CMakeLists.txt          # Build config (can add subdirs)
-├── README.md               # Project overview, usage, performance
-├── LICENSE                 # MIT, Apache 2.0, or your choice
-└── .gitignore
+├── cmake/                       # Enhanced build system
+│   ├── platforms/               # Platform-specific build settings
+│   ├── toolchains/              # Cross-compilation toolchains
+│   └── options/                 # Build option configurations
+│
+├── CMakeLists.txt               # Main build configuration
+├── README.md                    # Project overview and documentation
+├── CONTRIBUTING.md              # Contribution guidelines
+├── LICENSE                      # License information
+└── .github/                     # GitHub workflows for CI/CD
+    ├── workflows/               # CI/CD workflows
+    │   ├── build.yml            # Build pipeline
+    │   ├── test.yml             # Test pipeline
+    │   ├── benchmark.yml        # Benchmark tracking
+    │   └── release.yml          # Release automation
+    └── ISSUE_TEMPLATE/          # Issue templates
+```
