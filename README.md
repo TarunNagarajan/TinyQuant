@@ -61,3 +61,48 @@
 | **57** | Final testing + bugfixes                                  | All modules reviewed                                          | Ship-ready confidence                               |
 | **58** | Polish all docs, add badges, finalize license             | OSS best practices                                            | GitHub portfolio boost                              |
 | **59** | Push final commit, write detailed commit message          | Ship milestone v1.0                                           | Versioning                                          |
+
+TinyPolicy/
+├── runtime/                # Core C++ inference engine & scheduler
+│   ├── main.cpp            # Entry point: loads model, runs loop
+│   ├── inference.hpp       # MLP forward pass (quantized, float, etc.)
+│   ├── scheduler.hpp       # Real-time tick manager
+│   ├── model_loader.hpp    # Parses weights/config from file
+│   ├── activations.hpp     # ReLU, tanh, etc.
+│   └── utils.hpp           # Logging, timing macros, etc.
+│
+├── models/                 # Saved model weights and configs
+│   ├── tiny_policy.onnx    # Exported from PyTorch
+│   ├── weights.bin         # Raw binary weights
+│   ├── metadata.json       # Layer sizes, scale, zero-points
+│   └── README.md
+│
+├── scripts/                # Python tools (training, export, plotting)
+│   ├── train_policy.py     # Tiny MLP for simple control task
+│   ├── export_to_onnx.py   # Converts to ONNX and raw format
+│   ├── plot_logs.py        # Reads CSV log, plots outputs
+│   └── generate_inputs.py  # Simulates noisy sensor inputs
+│
+├── benchmarks/             # Benchmark + profiling utilities
+│   ├── latency_test.cpp
+│   ├── mem_profile.md
+│   └── perf_results.csv
+│
+├── tests/                  # Unit tests for components
+│   ├── test_inference.cpp
+│   ├── test_scheduler.cpp
+│   └── test_loader.cpp
+│
+├── data/                   # Sample inputs for inference
+│   ├── inputs.csv
+│   └── outputs_expected.csv
+│
+├── plots/                  # Output plots (generated from logs)
+│   ├── angle_vs_time.png
+│   ├── torque_output.png
+│   └── README.md
+│
+├── CMakeLists.txt          # Build config (can add subdirs)
+├── README.md               # Project overview, usage, performance
+├── LICENSE                 # MIT, Apache 2.0, or your choice
+└── .gitignore
