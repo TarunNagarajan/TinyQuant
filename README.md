@@ -1,6 +1,5 @@
 # TinyPolicy
 A fast, quantized neural policy execution runtime in C++ for embedded and real-time control systems.
----
 
 | Day    | Task                                                      | Technical Goals                                               | Learning Objectives                                 |
 | ------ | --------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------- |
