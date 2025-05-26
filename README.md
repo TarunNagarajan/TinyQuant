@@ -1,4 +1,4 @@
-# TinyPolicy Core: Quantized Neural Policy Execution Engine
+# TinyQuant: Quantized Neural Policy Execution Engine
 
 **A focused implementation of hardware-accelerated, quantized neural network inference for embedded control systems.**
 
