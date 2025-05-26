@@ -1,6 +1,6 @@
 # TinyPolicy Core: Quantized Neural Policy Execution Engine
 
-**A focused implementation of hardware-accelerated, quantized neural network inference for embedded control systems**
+**A focused implementation of hardware-accelerated, quantized neural network inference for embedded control systems.**
 
 ## Project Scope & Rationale
 
