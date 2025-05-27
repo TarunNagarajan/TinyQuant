@@ -188,8 +188,6 @@ TinyQuant/
 
 ## Technical Deep Dives
 
-## Technical Deep Dives
-
 ### 1. Multi-Model Architecture Support
 
 You'll implement a sophisticated model abstraction that supports all major architectures:
