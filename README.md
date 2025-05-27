@@ -14,7 +14,7 @@ This is a strategically focused subset of the full TinyQuant system, designed to
 ## Core Architecture
 
 ```
-TinyPolicyCore/
+TinyQuant/
 ├── runtime/
 │   ├── core/
 │   │   ├── inference_engine.hpp     # Multi-model inference coordinator
