@@ -4,7 +4,7 @@
 
 ## Project Scope & Rationale
 
-This is a strategically focused subset of the full TinyPolicy Pro system, designed to deliver maximum learning value and technical impressiveness while remaining achievable. The focus areas were chosen because they:
+This is a strategically focused subset of the full TinyQuant system, designed to deliver maximum learning value and technical impressiveness while remaining achievable. The focus areas were chosen because they:
 
 1. **Demonstrate core ML systems expertise**: Quantization, SIMD optimization, memory management
 2. **Show hardware acceleration skills**: Platform-specific optimizations, ARM NEON/x86 AVX
