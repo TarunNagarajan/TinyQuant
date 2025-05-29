@@ -31,6 +31,8 @@ enum class MemoryLayout {
 
 // --- END OF TENSOR DESCRIPTION ---
 
+// --- START SHAPE CLASS --
+
 class Shape {
 private:
     std::vector<size_t> dims_;
@@ -99,14 +101,66 @@ public:
     // @Feature: RNN Support
 
     bool is_sequence() const {
-        return dims_.size() >= 2;
+        return dims_.size() >= 2; 
+        // returns true, if the tensor has a sequence dimension
     }
 
     /*
     ** To define a sequence, you atleast need:
     ** Time Steps (which is the length of the sequence) (dims_[0])
     ** Batches per Time Step (dims_[1])
+
+    ** Sequence of Batches is the standard format for RNN/Sequence Model inputs. 
     */
 
-} // Class Shape
+    size_t sequence_length() const {
+        return is_sequence() ? dims_[0] : 1; 
+        // returns the time steps (length of sequence), if it is a sequence.
+    }
+
+    size_t batch_size() const {
+        return is_sequence() && dims_.size() >= 2 ? dims_[1] : 1;
+        // returns the number of batches per time step (dims_[1]), if it is a sequence.
+    }
+
+    size_t feature_size() const {
+        if (dims_.size() == 1) return dims_[0];
+        if (dims_.size() == 2) return dims_[1];
+        if (dims_.size() == 3) return dims_[2];
+
+        return std::accumulate(dims_begin() + 2, dims_.end(), 1ULL, std::multiplies<size_t>());
+    }
+
+    bool operator==(const Shape& other) const {
+        return dims_ == other.dims_;
+    }
+
+    bool operator!=(const Shape& other) const {
+        return !(*this == other);
+    }
+}; // --- END SHAPE CLASS ---
+
+// --- START TENSOR CLASS ---
+class Tensor {
+private:
+    Shape shape_;
+    DataType dtype_;
+    MemoryLayout layout_;
+    std::shared_ptr<void> data_; 
+    size_t byte_size_;
+    bool owns_data_; 
+
+    size_t bytes_per_element() const {
+        switch(dtype_) {
+            case DataType::FLOAT32: return 4;
+            case DataType::INT8: return 1;
+            case DataType::INT4: return 1;
+            case DateType::UINT8: return 1; // @IDK Packed, but 1 byte min
+        }
+    }
+
+    static constexpr size_t ALIGNMENT = 32;
+    void * aligned_alloc(size)t
+}
+// --- END TENSOR CLASS ---
 } // namespace tinyquant
