@@ -47,7 +47,7 @@ private:
 
 public:
 
-    // Inits
+    // CONSTRUCTORS
 
     Shape() : total_size_(0) {}
 
@@ -137,6 +137,7 @@ public:
 
     bool operator!=(const Shape& other) const {
         return !(*this == other);
+        // return true if this and other are NOT equal, and false if they ARE equal.
     }
 }; // --- END SHAPE CLASS ---
 
@@ -155,12 +156,86 @@ private:
             case DataType::FLOAT32: return 4;
             case DataType::INT8: return 1;
             case DataType::INT4: return 1;
-            case DateType::UINT8: return 1; // @IDK Packed, but 1 byte min
+            case DataType::UINT8: return 1; // @IDK Packed, but 1 byte min
         }
     }
 
     static constexpr size_t ALIGNMENT = 32;
-    void * aligned_alloc(size)t
+    // compiler-time constant shared along all instances of the Tensor class.
+
+    void* aligned_alloc(size_t size) {
+        void* ptr = nullptr;
+        #ifdef _WIN32
+            ptr = _aligned_malloc(size, ALIGNMENT);
+        #else
+            if (posix_memalign(&ptr, ALIGNMENT, size) != 0) ptr = nullptr;
+        #endif
+
+        if (!ptr) {
+            throw std::bad_alloc();
+        }
+
+        return ptr;
+    }
+
+    void aligned_free(void *ptr) {
+        if (ptr) {
+            #ifdef _WIN32 
+                _aligned_free(ptr);
+            #else
+                free(ptr);
+            #endif
+        }   
+    }
+
+public:
+
+    // CONSTRUCTORS 
+    Tensor() : dtype_(DataType::FLOAT32), layout_(MemoryLayout::ROW_MAJOR), byte_size_(0), owns_data_(true) {}
+
+    Tensor(const Shape& shape, DataType dtype = DataType::FLOAT32,
+           MemoryLayout layout = MemoryLayout::ROW_MAJOR)
+           : shape_(shape), dtype_(dtype), layout_(layout), owns_data_(true) {
+            byte_size_ = shape_.size() * bytes_per_element(); 
+
+            if (byte_size_ > 0) {
+                void* raw_ptr = aligned_alloc(byte_size_);
+                data_ = std::shared_ptr<void>(raw_ptr, [this](void* p) {
+                    aligned_free(p);
+                });
+
+                std::memset(raw_ptr, 0, byte_size_);
+            }
+        }
+
+    // + INITIALIZER LIST FOR TESTING
+
+    template<typename T>
+    Tensor(const Shape& shape, std::initializer_list<T> values, DataType dtype = DataType::FLOAT32) 
+    : Tensor(shape, dtype) {
+        if (values.size() != shapes_.size()) {
+            throw std::invalid_argument("SIZE MISMATCH: INITIALIZER LIST & TENSOR SHAPE");  
+        }
+
+        T* ptr = static_cast<T*>(data_.get());
+        std::copy(values.begin(), values.end(), ptr);
+    }
+
+    Tensor(const Tensor& other)
+    : shape_(other.shape_), dtype_(other.dtype_), layout_(other.layout_),
+    byte_size_(other.byte_size_), owns_data_(true) {
+        if (byte_size_ > 0) {
+            void* raw_ptr = aligned_alloc(byte_size_);
+            data_ = std::shared_ptr<void>(raw_ptr, [this](void* p) {
+                aligned_free(p);
+            });
+
+            std::memcpy(raw_ptr,other.data_.get(),byte_size_);
+        }
+    }
+
+    Tensor(Tensor&& other) noexcept
+
 }
 // --- END TENSOR CLASS ---
 } // namespace tinyquant
