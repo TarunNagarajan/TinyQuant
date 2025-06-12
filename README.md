@@ -1,270 +1,246 @@
-# TinyQuant: Quantized Neural Policy Execution Engine
-
-**A focused implementation of hardware-accelerated, quantized neural network inference for embedded control systems.**
-
-## Project Scope & Rationale
-
-This is a strategically focused subset of the full TinyQuant system, designed to deliver maximum learning value and technical impressiveness while remaining achievable. The focus areas were chosen because they:
-
-1. **Demonstrate core ML systems expertise**: Quantization, SIMD optimization, memory management
-2. **Show hardware acceleration skills**: Platform-specific optimizations, ARM NEON/x86 AVX
-3. **Prove systems programming ability**: Real-time constraints, embedded systems focus
-4. **Create tangible results**: Working benchmarks, visual performance comparisons
-
-## Core Architecture
-
-```
+Hardware-Accelerated, Quantized Neural Network Inference (In-Depth 60-Day Plan)
+Project Scope & Rationale
+This project is a strategically focused, 60-day implementation of a high-performance inference engine for quantized neural networks. The objective is to build a library from scratch that is memory-efficient, CPU-optimized, and architecturally robust.
+This project will demonstrate and solidify expertise in:
+Low-Level ML Systems: Building core components like tensor libraries, memory managers, and operator kernels.
+Performance Optimization: Implementing quantization (INT8) and leveraging platform-specific SIMD intrinsics (ARM NEON, x86 AVX2) for hardware acceleration.
+Advanced Software Architecture: Designing a modular system to support multiple neural network architectures (MLP, LSTM, GRU, TCN) and advanced features like model fusion.
+Rigorous Engineering: Emphasizing testing, benchmarking, and clear documentation to produce a professional-quality technical artifact.
+Core Architecture
 TinyQuant/
 ├── runtime/
 │   ├── core/
-│   │   ├── inference_engine.hpp     # Multi-model inference coordinator
-│   │   ├── tensor.hpp               # Optimized tensor operations  
-│   │   ├── quantized_ops.hpp        # INT8/INT4 operations
-│   │   ├── sequence_ops.hpp         # Optimized RNN operations
-│   │   └── models/
-│   │       ├── mlp.hpp              # Multi-layer perceptron
-│   │       ├── lstm.hpp             # LSTM with optimized cell ops
-│   │       ├── gru.hpp              # GRU implementation
-│   │       ├── tcn.hpp              # Temporal Convolutional Network
-│   │       ├── fusion_model.hpp     # Custom model fusion
-│   │       └── model_loader.hpp     # Multi-format model loading
+│   │   ├── inference_engine.hpp    # Multi-model inference coordinator
+│   │   ├── tensor.hpp              # Optimized tensor with quantization info
+│   │   └── quantized_ops.hpp       # SIMD-accelerated INT8 kernels
 │   │
-│   ├── platform/
-│   │   ├── simd_ops.hpp            # SIMD abstraction layer
-│   │   ├── arm_neon.hpp            # ARM NEON optimizations
-│   │   ├── x86_avx.hpp             # x86 AVX optimizations
-│   │   ├── memory_pool.hpp         # Deterministic memory management
-│   │   └── threading/
-│   │       ├── rt_scheduler.hpp     # Real-time task scheduler
-│   │       ├── thread_pool.hpp      # Multi-core work distribution
-│   │       └── heterogeneous.hpp    # CPU/GPU coordination
+│   ├── models/
+│   │   ├── model.hpp               # Abstract base class for all models
+│   │   ├── mlp.hpp                 # Multi-Layer Perceptron
+│   │   ├── lstm.hpp                # LSTM with optimized cell ops
+│   │   ├── gru.hpp                 # GRU with optimized cell ops
+│   │   ├── tcn.hpp                 # Temporal Convolutional Network
+│   │   ├── fusion_model.hpp        # For ensembling/cascading models
+│   │   └── model_loader.hpp        # Parses custom quantized format
 │   │
-│   └── safety/
-│       ├── bounds_checker.hpp       # Input/output validation
-│       └── watchdog.hpp            # Execution monitoring
+│   └── platform/
+│       ├── simd_ops.hpp            # SIMD abstraction layer (NEON/AVX)
+│       ├── memory_pool.hpp         # Deterministic, pre-allocated memory
+│       └── thread_pool.hpp         # For parallel inference execution
 │
 ├── tools/
 │   ├── quantizer/
-│   │   ├── calibrate.py            # Quantization calibration
-│   │   └── convert.py              # Model conversion pipeline
+│   │   ├── calibrate.py            # Finds quantization ranges from data
+│   │   └── convert.py              # Converts FP32 models to custom INT8
 │   │
 │   └── benchmarks/
-│       ├── benchmark_runner.cpp     # Performance testing
-│       └── accuracy_tester.cpp     # Quantization accuracy tests
-│
-├── examples/
-│   ├── control_systems/
-│   │   ├── pendulum_mlp/           # Classic MLP control
-│   │   ├── drone_lstm/             # LSTM-based drone control
-│   │   └── robot_tcn/              # TCN for robotic manipulation
-│   ├── fusion_examples/
-│   │   ├── hybrid_control/         # MLP + LSTM fusion
-│   │   └── multi_modal/            # Different models for different inputs
-│   ├── threading_demos/
-│   │   ├── multicore_inference/    # Parallel model execution
-│   │   └── heterogeneous_compute/  # CPU + GPU coordination
-│   └── benchmarks/
-│       ├── model_comparison/       # Compare all model types
-│       └── platform_performance/   # Cross-platform benchmarks
+│       ├── benchmark_runner.cpp    # Measures latency and throughput
+│       └── accuracy_tester.cpp     # Validates quantization accuracy
 │
 └── tests/
-    ├── unit_tests/                 # Component testing
-    └── integration_tests/          # End-to-end validation
-```
+    ├── unit_tests/                 # For individual components
+    └── integration_tests/          # For end-to-end model execution
 
-## Implementation Timeline (8-10 weeks)
 
-### Phase 1: Foundation & Core Models (Weeks 1-3)
-**Goal**: Build tensor engine and implement all core model types
+Implementation Timeline (8 Weeks / 60 Days)
+Phase 1: Foundation & Quantization Pipeline (Weeks 1-2)
+Goal: Build the foundational C++ tensor library and the Python tools required to quantize models.
+Week 1: Core Tensor Engine
+Day 1-2: Design tensor.hpp. Implement the class with support for multiple dimensions, data types (float, int8_t, int32_t), and memory strides for efficient view creation.
+Day 3-5: Implement a reference library of FP32 mathematical operations (matrix multiplication, element-wise ops, activations).
+Day 6-7: Implement memory_pool.hpp. Create a deterministic memory manager with pre-allocation and zero-overhead "freeing" to avoid malloc/free calls during inference.
+Key Deliverables:
+A fully tested tensor.hpp class.
+A library of reference FP32 operators.
+A thread-safe, deterministic memory pool.
+Week 2: Quantization Tools & Model Loading
+Day 1-3: Build the Python quantizer/calibrate.py script. It will take a dataset and an FP32 model (e.g., ONNX) to determine the min/max activation ranges needed for quantization.
+Day 4-5: Build quantizer/convert.py. This script will use the calibration data to convert FP32 weights to INT8, calculate scaling factors, and serialize everything into a custom binary format.
+Day 6-7: Implement model_loader.hpp in C++ to parse the custom binary format and load quantized weights and metadata into C++ data structures.
+Key Deliverables:
+Python tools capable of generating a quantized model file from an ONNX model.
+A C++ model loader that can parse the custom format.
+Phase 2: Core Inference & Advanced Models (Weeks 3-4)
+Goal: Enable end-to-end quantized inference and expand model architecture support.
+Week 3: Quantized Operations & First Model (MLP)
+Day 1-3: Implement quantized_ops.hpp. Create reference C++ implementations for core INT8 operations: quantized_matmul (outputting to INT32) and requantization functions to scale results back to INT8.
+Day 4-5: Implement mlp.hpp using the quantized operators.
+Day 6-7: Full integration test. Quantize a simple MLP in Python, load it in C++, run inference on sample data, and verify the output against the original FP32 model.
+Key Deliverables:
+A library of reference (non-SIMD) INT8 operators.
+A working, quantized MLPModel.
+An end-to-end test validating the entire pipeline.
+Week 4: Recurrent Models (LSTM & GRU)
+Day 1-3: Implement lstm.hpp. This includes managing hidden/cell states and implementing the four gate kernels using the quantized ops library.
+Day 4-5: Implement gru.hpp. Leverage the components from the LSTM but implement the specific update/reset gate logic.
+Day 6-7: Refactor the InferenceEngine to correctly manage state for recurrent models across multiple inference steps. Add state reset functionality.
+Key Deliverables:
+Fully functional LSTMModel and GRUModel implementations.
+An InferenceEngine capable of handling both stateful and stateless models.
+Phase 3: Hardware Acceleration & Optimization (Weeks 5-6)
+Goal: Massively accelerate performance using platform-specific SIMD instruction sets.
+Week 5: Convolutional Models & SIMD Abstraction
+Day 1-3: Implement tcn.hpp. This requires an efficient kernel for 1D causal dilated convolutions, which is a key target for SIMD optimization.
+Day 4-7: Design and implement the simd_ops.hpp abstraction layer. Use compile-time checks (#if defined) to detect the target architecture (ARM NEON, x86 AVX2) and create a unified function signature for SIMD operations.
+Key Deliverables:
+A working TCNModel.
+A simd_ops.hpp header that provides a clean abstraction over platform-specific intrinsics.
+Week 6: SIMD Kernel Implementation
+Day 1-3: Implement the ARM NEON backend. Write NEON intrinsics for the most critical operators: INT8 matrix multiplication and 1D convolution.
+Day 4-5: Implement the x86 AVX2 backend for the same set of critical operators.
+Day 6-7: Integrate the SIMD kernels into all models. Benchmark the performance gains of SIMD vs. the reference C++ implementations. Expect a 4-8x speedup on accelerated layers.
+Key Deliverables:
+Complete NEON and AVX2 backends for core quantized operations.
+All models now transparently use hardware acceleration.
+Benchmark results showing significant performance improvements.
+Phase 4: Advanced Features & Finalization (Weeks 7-8)
+Goal: Add parallelism and advanced model composition, then rigorously test and document the entire system.
+Week 7: Parallelism & Model Fusion
+Day 1-3: Implement a high-performance, low-overhead thread_pool.hpp.
+Day 4-5: Implement fusion_model.hpp. Design a framework that can combine models, supporting strategies like ensembling (averaging outputs) and cascading (chaining models).
+Day 6-7: Integrate the ThreadPool into the InferenceEngine to enable running multiple inference requests in parallel.
+Key Deliverables:
+A robust thread pool for concurrent execution.
+A flexible model fusion framework.
+The InferenceEngine now capable of parallel inference.
+Week 8: Benchmarking & Documentation
+Day 1-3: Build the benchmark_runner.cpp. It must be able to test all models for latency (ms/inference) and throughput (inferences/sec) across different thread counts and with SIMD enabled/disabled.
+Day 4-5: Build the accuracy_tester.cpp to compare the C++ engine's output against the original FP32 model across a validation dataset, generating a report on accuracy loss (e.g., Top-1 accuracy drop).
+Day 6-7: Write a comprehensive README.md with build instructions, API usage, and performance results. Final code cleanup and preparation of a presentation.
+Key Deliverables:
+A powerful command-line benchmarking suite.
+A detailed accuracy validation report.
+A polished, well-documented, professional-quality final project.
+Technical Deep Dives
+1. Quantized Tensor & SIMD Operations
+The core of the engine is the interaction between the tensor representation and the SIMD-accelerated kernels. The tensor will carry quantization parameters (scale and zero-point) needed by the operators.
+// A simplified view of the tensor and a SIMD kernel
+// tensor.hpp
+struct QuantizationParams {
+    float scale;
+    int8_t zero_point;
+};
 
-#### Week 1: Tensor Engine & Memory Management
-- **Day 1-2**: Design tensor class with sequence operation support
-- **Day 3-4**: Implement basic operations (matmul, convolution, activations)
-- **Day 5-7**: Create deterministic memory pool with thread safety
+class Tensor {
+    // ... shape, strides, etc.
+    void* data_;
+    DataType type_;
+    QuantizationParams quant_params_;
+};
 
-**Key Deliverables**:
-- `tensor.hpp` with both dense and sequence operations
-- Cache-friendly matrix multiplication with sequence batching
-- Thread-safe memory pools for multi-core execution
+// simd_ops.hpp
+namespace tinyquant {
+namespace simd {
 
-#### Week 2: MLP & Basic RNN Operations
-- **Day 1-3**: Implement MLP with quantization support
-- **Day 4-5**: Create optimized RNN cell operations (matrix ops + element-wise)
-- **Day 6-7**: Add sequence processing utilities (padding, masking, etc.)
+#if defined(__ARM_NEON)
+// ARM NEON implementation for a 4x4 matrix multiplication block
+inline void kernel_gemm_s8_4x4(const int8_t* a, const int8_t* b, int32_t* c, int K) {
+    // Fused multiply-accumulate using NEON intrinsics
+    int32x4_t c0 = vdupq_n_s32(0);
+    // ... (NEON code for GEMM kernel) ...
+}
+#elif defined(__AVX2__)
+// x86 AVX2 implementation
+inline void kernel_gemm_s8_4x4(...) {
+    // Fused multiply-add using AVX2 intrinsics
+    __m256i acc = _mm256_setzero_si256();
+    // ... (AVX2 code for GEMM kernel) ...
+}
+#endif
 
-**Key Deliverables**:
-- Working MLP implementation with INT8 quantization
-- `sequence_ops.hpp` with optimized RNN building blocks
-- Sequence batching and padding utilities
+} // namespace simd
+} // namespace tinyquant
 
-#### Week 3: LSTM & GRU Implementation
-- **Day 1-3**: Implement LSTM with forget/input/output gates
-- **Day 4-5**: Create GRU with update/reset gates and optimized cell
-- **Day 6-7**: Add state management and sequence unrolling
 
-**Key Deliverables**:
-- Full LSTM implementation with hidden state management
-- GRU implementation with comparable performance to LSTM
-- Efficient sequence processing with state persistence
-
-### Phase 2: Advanced Models & Hardware Acceleration (Weeks 4-6)
-**Goal**: Add TCN support and implement SIMD optimizations
-
-#### Week 4: Temporal Convolutional Networks
-- **Day 1-3**: Implement dilated convolution operations
-- **Day 4-5**: Create residual connections and causal padding
-- **Day 6-7**: Optimize TCN for temporal sequence processing
-
-**Key Deliverables**:
-- `tcn.hpp` with dilated convolutions and residual blocks
-- Causal convolution that preserves temporal causality
-- TCN implementation competitive with RNN performance
-
-#### Week 5: SIMD Acceleration
-- **Day 1-2**: Create platform detection and SIMD dispatch system
-- **Day 3-4**: Implement ARM NEON optimizations for all model types
-- **Day 5-7**: Implement x86 AVX optimizations with quantized operations
-
-**Key Deliverables**:
-- Unified SIMD interface supporting all model architectures
-- 3-4x speedup on matrix operations across all model types
-- Vectorized quantized operations for INT8/INT4
-
-#### Week 6: Model Fusion & Custom Architectures
-- **Day 1-3**: Design model fusion framework (ensemble, cascaded, parallel)
-- **Day 4-5**: Implement hybrid models (e.g., MLP feature extraction + LSTM)
-- **Day 6-7**: Create custom model composition tools
-
-**Key Deliverables**:
-- `fusion_model.hpp` supporting multiple fusion strategies
-- Working hybrid control examples (MLP+LSTM for drone control)
-- Performance optimization for fused model execution
-
-### Phase 3: Multi-threading & Real-time Systems (Weeks 7-8)
-**Goal**: Add real-time scheduling and multi-core support
-
-#### Week 7: Real-time Scheduler
-- **Day 1-3**: Implement priority-based real-time task scheduler
-- **Day 4-5**: Add deadline monitoring for time-critical inference
-- **Day 6-7**: Create deterministic execution guarantees
-
-**Key Deliverables**:
-- `rt_scheduler.hpp` with priority-based scheduling
-- Deadline monitoring with configurable time budgets
-- Worst-case execution time (WCET) analysis tools
-
-#### Week 8: Multi-core & Heterogeneous Computing
-- **Day 1-3**: Implement thread pool for parallel model execution
-- **Day 4-5**: Add CPU affinity and load balancing across cores
-- **Day 6-7**: Create basic heterogeneous compute (CPU + GPU coordination)
-
-**Key Deliverables**:
-- Multi-core inference with automatic load balancing
-- Thread-safe model execution with minimal synchronization
-- Basic GPU acceleration for supported operations
-
-### Phase 4: Integration & Advanced Examples (Weeks 9-10)
-**Goal**: Create comprehensive examples and benchmarking
-
-#### Week 9: Advanced Control Examples
-- **Day 1-3**: Build drone stabilization using LSTM for trajectory prediction
-- **Day 4-5**: Create robotic arm control using TCN for motion planning
-- **Day 6-7**: Implement adaptive control with model fusion
-
-**Key Deliverables**:
-- Working drone control demo with real-time LSTM inference
-- Robot arm control showcasing TCN temporal modeling
-- Adaptive system that switches between models dynamically
-
-#### Week 10: Benchmarking & Performance Analysis
-- **Day 1-3**: Create comprehensive benchmarking suite for all models
-- **Day 4-5**: Implement cross-platform performance comparison
-- **Day 6-7**: Add memory usage analysis and optimization recommendations
-
-**Key Deliverables**:
-- Complete benchmark suite comparing all model types
-- Performance analysis across different hardware platforms
-- Optimization recommendations based on use case
-
-## Technical Deep Dives
-
-### 1. Multi-Model Architecture Support
-
-You'll implement a sophisticated model abstraction that supports all major architectures:
-
-```cpp
-// Base model interface that all architectures inherit from
-class ModelInterface {
+2. Advanced Model Interface (Stateful vs. Stateless)
+A polymorphic base class allows the engine to handle different model types uniformly while allowing stateful models like LSTMs to manage their internal state.
+// models/model.hpp
+class Model {
 public:
-    virtual ~ModelInterface() = default;
+    virtual ~Model() = default;
     virtual void forward(const Tensor& input, Tensor& output) = 0;
-    virtual void set_quantization_mode(QuantMode mode) = 0;
-    virtual size_t get_memory_footprint() const = 0;
-    virtual void reset_state() = 0; // For stateful models like LSTM/GRU
+    
+    // Base implementation does nothing; overridden by stateful models
+    virtual void reset_state() {}
+    virtual const std::string& name() const = 0;
 };
 
-// LSTM implementation with optimized cell operations
-class LSTMModel : public ModelInterface {
-    struct LSTMCell {
-        QuantizedTensor Wf, Wi, Wo, Wg;  // Weight matrices
-        QuantizedTensor bf, bi, bo, bg;  // Bias vectors
-        
-        // Optimized cell forward pass with SIMD
-        void forward_cell(const Tensor& input, 
-                         Tensor& hidden_state, 
-                         Tensor& cell_state);
-    };
-    
-    std::vector<LSTMCell> cells_;
-    Tensor hidden_state_, cell_state_;
-    
+// models/lstm.hpp
+class LSTMModel : public Model {
 public:
     void forward(const Tensor& input, Tensor& output) override;
-    void reset_state() override { /* Reset hidden/cell states */ }
-};
-
-// TCN with dilated convolutions
-class TCNModel : public ModelInterface {
-    struct DilatedConvBlock {
-        QuantizedTensor weights_;
-        int dilation_rate_;
-        
-        void forward_causal_conv(const Tensor& input, Tensor& output);
-    };
-    
-    std::vector<DilatedConvBlock> blocks_;
-    std::vector<Tensor> residual_connections_;
-    
-public:
-    void forward(const Tensor& input, Tensor& output) override;
-};
-```
-
-### 2. Model Fusion Framework
-
-The fusion system allows combining different model types for enhanced performance:
-
-```cpp
-// Different fusion strategies
-enum class FusionStrategy {
-    ENSEMBLE,     // Average outputs from multiple models
-    CASCADED,     // Feed output of one model to another
-    PARALLEL,     // Run models in parallel on different cores
-    ADAPTIVE      // Switch between models based on input characteristics
-};
-
-class FusionModel : public ModelInterface {
-    std::vector<std::unique_ptr<ModelInterface>> models_;
-    FusionStrategy strategy_;
-    
-public:
-    // Example: MLP feature extraction + LSTM temporal modeling
-    void add_feature_extractor(std::unique_ptr<MLPModel> mlp) {
-        models_.push_back(std::move(mlp));
+    void reset_state() override {
+        hidden_state_.fill(0);
+        cell_state_.fill(0);
     }
+private:
+    Tensor weights_ih_, weights_hh_; // Quantized weights
+    Tensor bias_ih_, bias_hh_;
+    Tensor hidden_state_, cell_state_; // Internal states
+};
+
+// models/tcn.hpp (Stateless)
+class TCNModel : public Model {
+public:
+    void forward(const Tensor& input, Tensor& output) override;
+    // reset_state() is not needed and will use the empty base version
+private:
+    struct DilatedConvBlock {
+        Tensor weights;
+        int dilation;
+    };
+    std::vector<DilatedConvBlock> blocks_;
+};
+
+
+3. Multi-threaded Inference Engine
+The InferenceEngine will use the ThreadPool to dispatch multiple inference requests concurrently, maximizing throughput on multi-core CPUs.
+// platform/thread_pool.hpp
+class ThreadPool {
+public:
+    ThreadPool(size_t num_threads);
+    ~ThreadPool();
     
-    void add_temporal_processor(std::unique_ptr<LSTMModel> lstm) {
-        models_.push_back(std::move(lstm));
+    template<class F, class... Args>
+    auto enqueue(F&& f, Args&&... args) -> std::future<typename std::result_of<F(Args...)>::type>;
+private:
+    // Standard thread pool implementation with a task queue
+    std::vector<std::thread> workers_;
+    std::queue<std::function<void()>> tasks_;
+    std::mutex queue_mutex_;
+    std::condition_variable condition_;
+    bool stop_;
+};
+
+// core/inference_engine.hpp
+class InferenceEngine {
+public:
+    InferenceEngine(size_t num_threads) : pool_(num_threads) {}
+
+    // Asynchronously schedule inference for a given model
+    std::future<Tensor> schedule(Model* model, const Tensor& input) {
+        return pool_.enqueue([model, input]() {
+            Tensor output;
+            model->forward(input, output);
+            return output;
+        });
+    }
+private:
+    ThreadPool pool_;
+};
+
+
+4. Model Fusion Framework
+The fusion system enables creating powerful meta-models by combining simpler ones. This demonstrates advanced architectural design.
+// models/fusion_model.hpp
+enum class FusionStrategy { ENSEMBLE, CASCADED };
+
+class FusionModel : public Model {
+public:
+    FusionModel(FusionStrategy strategy) : strategy_(strategy) {}
+    
+    void add_model(std::shared_ptr<Model> model) {
+        models_.push_back(model);
     }
     
     void forward(const Tensor& input, Tensor& output) override {
@@ -272,183 +248,27 @@ public:
             case FusionStrategy::CASCADED:
                 forward_cascaded(input, output);
                 break;
-            case FusionStrategy::PARALLEL:
-                forward_parallel(input, output);
-                break;
-            // ... other strategies
-        }
-    }
-
-private:
-    void forward_cascaded(const Tensor& input, Tensor& output);
-    void forward_parallel(const Tensor& input, Tensor& output);
-};
-```
-
-### 3. Real-time Multi-threaded Scheduler
-
-The scheduler ensures deterministic execution across multiple cores:
-
-```cpp
-class RTScheduler {
-public:
-    enum class Priority { CRITICAL, HIGH, NORMAL, LOW };
-    
-    struct Task {
-        std::function<void()> work;
-        Priority priority;
-        std::chrono::microseconds deadline;
-        int cpu_affinity = -1; // -1 for any CPU
-    };
-
-private:
-    std::vector<std::thread> worker_threads_;
-    std::priority_queue<Task> task_queue_;
-    std::mutex queue_mutex_;
-    std::condition_variable cv_;
-    
-public:
-    void initialize(int num_threads);
-    
-    // Schedule model inference with real-time constraints
-    template<typename ModelType>
-    auto schedule_inference(ModelType* model, 
-                          const Tensor& input,
-                          Priority priority = Priority::NORMAL,
-                          std::chrono::microseconds deadline = 
-                              std::chrono::microseconds(1000)) {
-        return std::async(std::launch::async, [=]() {
-            auto start = std::chrono::high_resolution_clock::now();
-            
-            Tensor output;
-            model->forward(input, output);
-            
-            auto end = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-            
-            if (duration > deadline) {
-                // Log deadline miss, potentially switch to faster model
-                handle_deadline_miss(model, duration, deadline);
-            }
-            
-            return output;
-        });
-    }
-
-private:
-    void handle_deadline_miss(ModelInterface* model, 
-                            std::chrono::microseconds actual,
-                            std::chrono::microseconds deadline);
-};
-```
-
-### 4. Heterogeneous Computing Support
-
-Basic CPU + GPU coordination for accelerated operations:
-
-```cpp
-class HeterogeneousExecutor {
-public:
-    enum class Device { CPU, GPU, AUTO };
-    
-private:
-    bool gpu_available_;
-    size_t gpu_memory_mb_;
-    
-public:
-    HeterogeneousExecutor() {
-        gpu_available_ = detect_gpu_support(); // CUDA/OpenCL detection
-        gpu_memory_mb_ = get_gpu_memory_size();
-    }
-    
-    // Automatically decide where to run based on model size and type
-    Device choose_optimal_device(const ModelInterface* model) {
-        size_t model_memory = model->get_memory_footprint();
-        
-        // Large models or those with many matrix operations go to GPU
-        if (gpu_available_ && 
-            model_memory < gpu_memory_mb_ * 1024 * 1024 && 
-            supports_gpu_acceleration(model)) {
-            return Device::GPU;
-        }
-        
-        return Device::CPU;
-    }
-    
-    // Execute model on chosen device
-    void execute(ModelInterface* model, 
-                const Tensor& input, 
-                Tensor& output,
-                Device device = Device::AUTO) {
-        
-        if (device == Device::AUTO) {
-            device = choose_optimal_device(model);
-        }
-        
-        switch(device) {
-            case Device::GPU:
-                execute_on_gpu(model, input, output);
-                break;
-            case Device::CPU:
-                model->forward(input, output);
+            case FusionStrategy::ENSEMBLE:
+                forward_ensemble(input, output);
                 break;
         }
     }
 
 private:
-    bool supports_gpu_acceleration(const ModelInterface* model);
-    void execute_on_gpu(ModelInterface* model, const Tensor& input, Tensor& output);
-};
-```
-
-### 5. Advanced Control System Examples
-
-You'll implement several sophisticated control examples:
-
-```cpp
-// Drone stabilization using LSTM for trajectory prediction
-class DroneController {
-    std::unique_ptr<LSTMModel> trajectory_predictor_;
-    std::unique_ptr<MLPModel> control_policy_;
-    RTScheduler scheduler_;
-    
-public:
-    struct DroneState {
-        float position[3];    // x, y, z
-        float velocity[3];    // vx, vy, vz
-        float orientation[4]; // quaternion
-        float angular_vel[3]; // wx, wy, wz
-    };
-    
-    struct ControlOutput {
-        float thrust;
-        float roll_rate;
-        float pitch_rate;
-        float yaw_rate;
-    };
-    
-    ControlOutput compute_control(const DroneState& current_state,
-                                const DroneState& desired_state) {
-        // Use LSTM to predict future trajectory
-        Tensor state_tensor = encode_state(current_state);
-        Tensor predicted_trajectory;
-        
-        auto future_prediction = scheduler_.schedule_inference(
-            trajectory_predictor_.get(), 
-            state_tensor,
-            RTScheduler::Priority::HIGH,
-            std::chrono::microseconds(500) // 500μs deadline
-        );
-        
-        predicted_trajectory = future_prediction.get();
-        
-        // Use MLP to compute control action
-        Tensor control_input = combine_states(current_state, desired_state, predicted_trajectory);
-        Tensor control_tensor;
-        
-        control_policy_->forward(control_input, control_tensor);
-        
-        return decode_control(control_tensor);
+    void forward_cascaded(const Tensor& input, Tensor& output) {
+        Tensor current_tensor = input;
+        for (size_t i = 0; i < models_.size(); ++i) {
+            Tensor intermediate_output;
+            models_[i]->forward(current_tensor, intermediate_output);
+            current_tensor = intermediate_output;
+        }
+        output = current_tensor;
     }
+
+    void forward_ensemble(const Tensor& input, Tensor& output); // Averages results
+
+    FusionStrategy strategy_;
+    std::vector<std::shared_ptr<Model>> models_;
 };
-```
+
+
