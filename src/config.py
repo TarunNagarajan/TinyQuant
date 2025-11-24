@@ -3,9 +3,9 @@ import os
 import sys
 
 class Config:
-    DEVICE = "cuda" if torch.cuda_is_available() else "cpu"
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     DTYPE = torch.bfloat16
-    MODEL = "Qwen/Qwen2.5-Math-1.5B-Instruct"
+    MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"
     CALIBRATION_SAMPLES = 64
     CALIBRATION_BATCH_SIZE = 1 
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
