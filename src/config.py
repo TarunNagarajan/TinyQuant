@@ -7,7 +7,7 @@ class Config:
     DTYPE = torch.bfloat16
     MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"
     CALIBRATION_SAMPLES = 64
-    CALIBRATION_BATCH_SIZE = 1 
+    CALIBRATION_BATCH_SIZE = 1
     PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     RESULTS_DIR = os.path.join(PROJECT_ROOT, "results")
     MAPS_DIR = os.path.join(RESULTS_DIR, "maps")
