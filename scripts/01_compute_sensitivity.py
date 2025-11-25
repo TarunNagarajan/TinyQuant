@@ -17,7 +17,7 @@ def main():
     parser.add_argument("--dataset", type = str, choices = ["gsm8k", "wikitext"], default = "gsm8k")
     args = parser.parse_args()
 
-    print(f"[LOADING MODEL] [{Config.MODEL}]")
+    print(f"[LOADING MODEL] [{Config.MODEL_ID}]")
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
     model = AutoModelForCausalLM.from_pretrained(Config.MODEL_ID, torch_dtype = Config.DTYPE, device_map = Config.DEVICE)
 
