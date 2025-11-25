@@ -20,12 +20,12 @@ def get_calibration_data(dataset_name, tokenizer, n_samples = None):
     print(f"[{dataset_name}] | loading {n_samples} samples")
 
     if dataset_name == "gsm8k":
-        ds = load_dataset("gsm8k", "main", split = "train")
+        ds = load_dataset("gsm8k", "main", split = "train", download_mode="reuse_cache_if_exists")
         ds = ds.shuffle(seed = 42).select(range(n_samples))
         data = [format_gsm8k_chat(row, tokenizer) for row in ds]
 
     elif dataset_name == "wikitext":
-        ds = load_dataset("wikitext", "wikitext-2-raw-v1", split = "train")
+        ds = load_dataset("wikitext", "wikitext-2-raw-v1", split = "train", download_mode="reuse_cache_if_exists")
         cleantext = [x['text'] for x in ds if len(x['text']) > 100 and not x['text'].startswith(" =")]
 
         random.seed(42)
@@ -37,10 +37,6 @@ def get_calibration_data(dataset_name, tokenizer, n_samples = None):
 
     else:
         raise ValueError("unknown dataset.")
-
-    print(f"--- [DEBUG] Sample 0 ({dataset_name}) ---")
-    print(data[0][:300].replace('\n', '\\n'))
-    print("------------------------------------------")
 
     return data
 

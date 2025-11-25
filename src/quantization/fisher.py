@@ -10,7 +10,7 @@ def compute_fisher(model, tokenizer, dsname):
 
     print(f"[{dsname}] [COMPUTING FISHER INFO ON {Config.DEVICE}]")
 
-    for text in tqdm(raw_samples):
+    for text in tqdm(raw_samples, desc="Computing Fisher", leave=False):
         inputs = tokenizer(text, return_tensors = "pt", padding = True, truncation = True, max_length = 2048)
         inputs = {k: v.to(Config.DEVICE) for k, v in inputs.items()}
         model.zero_grad()

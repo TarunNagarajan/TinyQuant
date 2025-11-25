@@ -18,8 +18,8 @@ def main():
     args = parser.parse_args()
 
     print(f"[LOADING MODEL] [{Config.MODEL_ID}]")
-    tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
-    model = AutoModelForCausalLM.from_pretrained(Config.MODEL_ID, dtype = Config.DTYPE, device_map = Config.DEVICE)
+    tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID, local_files_only=True, verbose=False)
+    model = AutoModelForCausalLM.from_pretrained(Config.MODEL_ID, dtype = Config.DTYPE, device_map = Config.DEVICE, low_cpu_mem_usage=True, trust_remote_code=True)
 
     if args.method == "fisher":
         scores = compute_fisher(model, tokenizer, args.dataset)
@@ -29,10 +29,10 @@ def main():
         filename = f"magnitude_{args.dataset}.json"
 
     output_path = os.path.join(Config.MAPS_DIR, filename)
-    print(f"[SAVING] [{output_path}]")
+    print(f"[SAVING]")
 
     with open(output_path, "w") as f:
-        json.dump(scores, f, indent = 4)
+        json.dump(scores, f)
 
     print("[COMPLETE]")
 

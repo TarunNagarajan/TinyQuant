@@ -1,6 +1,18 @@
-import torch
 import os
 import sys
+import warnings
+
+# Suppress TensorFlow and other warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+warnings.filterwarnings('ignore')
+
+# Suppress other common warnings
+import logging
+logging.getLogger("transformers").setLevel(logging.ERROR)
+logging.getLogger("datasets").setLevel(logging.ERROR)
+logging.getLogger("urllib3").setLevel(logging.ERROR)
+
+import torch
 
 class Config:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
