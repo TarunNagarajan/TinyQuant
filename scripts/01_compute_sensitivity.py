@@ -13,17 +13,39 @@ from src.config import Config
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--method", type = str, choices = ["fisher", "magnitude"], required = True)
-    parser.add_argument("--dataset", type = str, choices = ["gsm8k", "wikitext"], default = "gsm8k")
+    parser.add_argument(
+        "--method",
+        type=str,
+        choices=["fisher", "magnitude"],
+        required=True
+    )
+    parser.add_argument(
+        "--dataset",
+        type=str,
+        choices=["gsm8k", "wikitext"],
+        default="gsm8k"
+    )
+    parser.add_argument(
+        "--reduction",
+        type=str,
+        choices=["mean", "sum"],
+        default="mean",
+        help="Fisher reduction mode"
+    )
+
     args = parser.parse_args()
 
     print(f"[LOADING MODEL] [{Config.MODEL_ID}]")
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
-    model = AutoModelForCausalLM.from_pretrained(Config.MODEL_ID, dtype = Config.DTYPE, device_map = Config.DEVICE)
+    model = AutoModelForCausalLM.from_pretrained(
+        Config.MODEL_ID,
+        dtype=Config.DTYPE,
+        device_map=Config.DEVICE
+    )
 
     if args.method == "fisher":
-        scores = compute_fisher(model, tokenizer, args.dataset)
-        filename = f"fisher_{args.dataset}.json"
+        scores = compute_fisher(model, tokenizer, args.dataset, reduction=args.reduction)
+        filename = f"fisher_{args.dataset}_{args.reduction}.json"
     else:
         scores = compute_magnitude(model)
         filename = f"magnitude_{args.dataset}.json"
@@ -38,5 +60,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
