@@ -10,31 +10,48 @@ def compute_fisher(model, tokenizer, dsname):
 
     print(f"[{dsname}] [COMPUTING FISHER INFO]")
 
-    for text in tqdm(raw_samples, desc="Computing Fisher", leave=False):
-        inputs = tokenizer(text, return_tensors = "pt", padding = True, truncation = True, max_length = 2048)
+    processed = 0
+    for i, text in enumerate(tqdm(raw_samples, desc="Computing Fisher", leave=False, total=len(raw_samples))):
+        inputs = tokenizer(
+            text,
+            return_tensors = "pt",
+            padding = True,
+            truncation = True,
+            max_length = 2048
+        )
         inputs = {k: v.to(Config.DEVICE) for k, v in inputs.items()}
+
         model.zero_grad()
-        outputs = model(**inputs, labels = inputs["input_ids"])
-        loss = outputs.loss
+
+        outputs = model(**inputs, labels=inputs["input_ids"])
+        if "labels" in inputs:
+            active_token_count = int((inputs["input_ids"] != -100).sum().item())
+        else:
+            active_token_count = int(inputs["input_ids"].numel())
+
+        # if tokenizer doesn't produce -100 for padding, this is equal to numel.
+        # fix: undo mean reduction to get sum-log-likelihood gradients
+i        loss = outputs.loss * max(active_token_count, 1)
+
         loss.backward()
 
         with torch.no_grad():
             for name, param in model.named_parameters():
                 if param.grad is not None and "weight" in name:
-                    grad_sq = param.grad.detach().float().pow(2).sum().item()
+                    grad_sq = param.grad.detach().float().square().sum().item()
                     sensitivity_map[name] = sensitivity_map.get(name, 0.0) + grad_sq
 
         model.zero_grad()
-        if inputs is not None:
-            del inputs
-        if outputs is not None:
-            del outputs
-        if loss is not None:
-            del loss
-        torch.cuda.empty_cache()
+        del inputs, outputs, loss
 
-    for name in sensitivity_map:
-        sensitivity_map[name] /= len(raw_samples)
+        processed += 1
+
+        if torch.cuda.is_available() and ((i + 1) % 10 == 0):
+            torch.cuda.empty_cache()
+
+    if processed > 0:
+        for name in sensitivity_map:
+            sensitivity_map[name] /= processed
 
     return sensitivity_map
 
