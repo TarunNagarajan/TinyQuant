@@ -1,7 +1,7 @@
 import torch
 
 # calculate the L1 norm of the weights, as a standard magnitude pruning metric
-def compute_magnitude_info(model):
+def compute_magnitude(model):
     sensitivity_map = {}
     print("[COMPUTING L1 SCORES OF WEIGHTS]")
 
