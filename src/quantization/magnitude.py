@@ -2,7 +2,7 @@ import torch
 
 def compute_magnitude(model):
     sensitivity_map = {}
-    print("[COMPUTING L1 SCORES OF WEIGHTS]")
+    print("[COMPUTING MAGNITUDE: L1 SCORES OF WEIGHTS]")
 
     with torch.no_grad():
         for name, param in model.named_parameters():

@@ -8,7 +8,7 @@ def compute_fisher(model, tokenizer, dsname):
     sensitivity_map = {}
     raw_samples = get_calibration_data(dsname, tokenizer)
 
-    print(f"[{dsname}] [COMPUTING FISHER INFO ON {Config.DEVICE}]")
+    print(f"[{dsname}] [COMPUTING FISHER INFO]")
 
     for text in tqdm(raw_samples, desc="Computing Fisher", leave=False):
         inputs = tokenizer(text, return_tensors = "pt", padding = True, truncation = True, max_length = 2048)
