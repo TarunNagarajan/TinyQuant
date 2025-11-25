@@ -13,3 +13,13 @@
 * `del inputs, outputs, loss` is used for consistent memory cleanup.
 
 * Loop uses `enumerate()` to support scheduled cleanup.
+
+---
+
+# Magnitude Scoring Notes
+
+* Replaced `torch.sum(torch.abs(param))` with `param.abs().sum()` for cleaner expression.
+* Restricted logic to `param.requires_grad and "weight" in name`.
+* Kept computation inside `torch.no_grad()` to avoid graph tracking.
+* Output remains a per-weight-tensor L1 score.
+
