@@ -31,7 +31,7 @@ def compute_fisher(model, tokenizer, dsname):
 
         # if tokenizer doesn't produce -100 for padding, this is equal to numel.
         # fix: undo mean reduction to get sum-log-likelihood gradients
-i        loss = outputs.loss * max(active_token_count, 1)
+        loss = outputs.loss * max(active_token_count, 1)
 
         loss.backward()
 
