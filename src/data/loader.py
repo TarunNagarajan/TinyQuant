@@ -17,7 +17,7 @@ def get_calibration_data(dataset_name, tokenizer, n_samples = None):
     if n_samples is None:
         n_samples = Config.CALIBRATION_SAMPLES
 
-    print(f"[{dataset_name}] | loading {n_samples} samples")
+    print(f"[{dataset_name}] | [LOADING {n_samples} SAMPLES]")
 
     if dataset_name == "gsm8k":
         ds = load_dataset("gsm8k", "main", split = "train")
