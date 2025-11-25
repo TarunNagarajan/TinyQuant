@@ -18,7 +18,7 @@ def main():
     args = parser.parse_args()
 
     print(f"[LOADING MODEL] [{Config.MODEL_ID}]")
-    tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID, local_files_only=True, verbose=False)
+    tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID, verbose=False)
     model = AutoModelForCausalLM.from_pretrained(Config.MODEL_ID, dtype = Config.DTYPE, device_map = Config.DEVICE, low_cpu_mem_usage=True, trust_remote_code=True)
 
     if args.method == "fisher":
