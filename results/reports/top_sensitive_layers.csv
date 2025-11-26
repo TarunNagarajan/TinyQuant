@@ -1,0 +1,11 @@
+layer_name,fisher_mean,fisher_sum,parameter_count
+model.layers.0.input_layernorm,27.17144790493573,54.34289580987146,2
+model.layers.0.self_attn.v_proj,13.47764235017045,26.9552847003409,2
+model.layers.0.post_attention_layernorm,3.922024398964519,7.844048797929038,2
+model.layers.1.input_layernorm,1.3923574890650343,2.7847149781300686,2
+model.layers.3.input_layernorm,0.6191025640073349,1.2382051280146698,2
+model.layers.7.post_attention_layernorm,0.5790501687054833,1.1581003374109666,2
+model.layers.6.post_attention_layernorm,0.5454090057707315,1.090818011541463,2
+model.layers.4.post_attention_layernorm,0.5344783474235252,1.0689566948470504,2
+model.layers.11.post_attention_layernorm,0.5228386186839391,1.0456772373678782,2
+model.layers.10.post_attention_layernorm,0.48114361441063613,0.9622872288212723,2
