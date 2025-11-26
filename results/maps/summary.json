@@ -1,0 +1,226 @@
+[
+  {
+    "dataset": "gsm8k",
+    "samples": 64,
+    "method": "fisher",
+    "max_fisher": 4.414370795711875,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        4.414370795711875
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        2.0422100787982345
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        0.8333612713031471
+      ],
+      [
+        "model.layers.19.post_attention_layernorm.weight",
+        0.5784588535316288
+      ],
+      [
+        "model.layers.11.post_attention_layernorm.weight",
+        0.5412353789433837
+      ]
+    ]
+  },
+  {
+    "dataset": "gsm8k",
+    "samples": 128,
+    "method": "fisher",
+    "max_fisher": 4.601674952544272,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        4.601674952544272
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        2.134540001861751
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        0.8366304258815944
+      ],
+      [
+        "model.layers.19.post_attention_layernorm.weight",
+        0.557907466776669
+      ],
+      [
+        "model.layers.11.post_attention_layernorm.weight",
+        0.5138271325267851
+      ]
+    ]
+  },
+  {
+    "dataset": "gsm8k",
+    "samples": 256,
+    "method": "fisher",
+    "max_fisher": 5.531715430319309,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        5.531715430319309
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        2.5027366105932742
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        0.9394343509338796
+      ],
+      [
+        "model.layers.19.post_attention_layernorm.weight",
+        0.5724026500247419
+      ],
+      [
+        "model.layers.11.post_attention_layernorm.weight",
+        0.5359154651523568
+      ]
+    ]
+  },
+  {
+    "dataset": "wikitext",
+    "samples": 64,
+    "method": "fisher",
+    "max_fisher": 50.70967527478933,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        50.70967527478933
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        25.684739880263805
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        7.255069267004728
+      ],
+      [
+        "model.layers.1.input_layernorm.weight",
+        2.4551276336424053
+      ],
+      [
+        "model.layers.3.input_layernorm.weight",
+        1.095386156346649
+      ]
+    ]
+  },
+  {
+    "dataset": "wikitext",
+    "samples": 128,
+    "method": "fisher",
+    "max_fisher": 49.155611611902714,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        49.155611611902714
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        24.656177155673504
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        6.962207417236641
+      ],
+      [
+        "model.layers.1.input_layernorm.weight",
+        2.3223396856337786
+      ],
+      [
+        "model.layers.3.input_layernorm.weight",
+        0.9990251873387024
+      ]
+    ]
+  },
+  {
+    "dataset": "wikitext",
+    "samples": 256,
+    "method": "fisher",
+    "max_fisher": 48.61563936434686,
+    "top_5_layers": [
+      [
+        "model.layers.0.input_layernorm.weight",
+        48.61563936434686
+      ],
+      [
+        "model.layers.0.self_attn.v_proj.weight",
+        23.845450373832136
+      ],
+      [
+        "model.layers.0.post_attention_layernorm.weight",
+        6.705443661427125
+      ],
+      [
+        "model.layers.1.input_layernorm.weight",
+        2.342296365182847
+      ],
+      [
+        "model.layers.3.input_layernorm.weight",
+        1.0053798055887455
+      ]
+    ]
+  },
+  {
+    "dataset": "gsm8k",
+    "samples": null,
+    "method": "magnitude",
+    "max_magnitude": 2768896.0,
+    "top_5_layers": [
+      [
+        "model.embed_tokens.weight",
+        2768896.0
+      ],
+      [
+        "model.layers.3.mlp.gate_proj.weight",
+        452608.0
+      ],
+      [
+        "model.layers.4.mlp.gate_proj.weight",
+        440320.0
+      ],
+      [
+        "model.layers.2.mlp.gate_proj.weight",
+        436224.0
+      ],
+      [
+        "model.layers.5.mlp.gate_proj.weight",
+        430080.0
+      ]
+    ]
+  },
+  {
+    "dataset": "wikitext",
+    "samples": null,
+    "method": "magnitude",
+    "max_magnitude": 2768896.0,
+    "top_5_layers": [
+      [
+        "model.embed_tokens.weight",
+        2768896.0
+      ],
+      [
+        "model.layers.3.mlp.gate_proj.weight",
+        452608.0
+      ],
+      [
+        "model.layers.4.mlp.gate_proj.weight",
+        440320.0
+      ],
+      [
+        "model.layers.2.mlp.gate_proj.weight",
+        436224.0
+      ],
+      [
+        "model.layers.5.mlp.gate_proj.weight",
+        430080.0
+      ]
+    ]
+  }
+]
