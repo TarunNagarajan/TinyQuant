@@ -247,11 +247,11 @@ def run_full_analysis():
     param_rankings_with_zones = generate_quantization_zones(param_rankings)
     
     print("[GENERATING] Reports")
-    output_dir = os.path.join(Config.RESULTS_DIR, 'analysis_reports')
+    output_dir = os.path.join(Config.RESULTS_DIR, 'reports')
     top_layers_df, module_stats_df, param_rankings_df = generate_reports(
         layer_aggregated, module_stats, param_rankings_with_zones, output_dir
     )
-    
+
     print(f"[SAVED] Analysis reports to {output_dir}")
     print("[COMPLETE] Sensitivity analysis finished")
     
