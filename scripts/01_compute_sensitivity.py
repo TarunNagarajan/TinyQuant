@@ -54,7 +54,7 @@ def main():
     print(f"[SAVING]")
 
     with open(output_path, "w") as f:
-        json.dump(scores, f)
+        json.dump(scores, f, indent=2)
 
     print("[COMPLETE]")
 
