@@ -1,8 +1,14 @@
 import os
+import sys
 import json
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+
+# Add the project root to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, project_root)
+
 from src.config import Config
 
 def organize_and_preprocess_data():
