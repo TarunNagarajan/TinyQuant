@@ -53,6 +53,9 @@ def main():
 
     print(f"[LOADING MODEL] [{Config.MODEL_ID}]")
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_ID,
         dtype=Config.DTYPE,
