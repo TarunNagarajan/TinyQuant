@@ -37,7 +37,7 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
         with torch.no_grad():
             for name, param in model.named_parameters():
                 if param.grad is not None and "weight" in name:
-                    grad_sq = param.grad.detach().float().square().mean().item()
+                    grad_sq = param.grad.detach().cpu().float().square().mean().item()
                     sensitivity_map[name] = sensitivity_map.get(name, 0.0) + grad_sq
 
         model.zero_grad()
