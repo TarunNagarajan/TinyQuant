@@ -2,14 +2,20 @@ import os
 import json
 import torch
 import sys
+import argparse
 from collections import defaultdict
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from src.config import Config
 from src.quantization.fisher import compute_fisher
 from src.quantization.magnitude import compute_magnitude
-from src.data.loader import get_calibration_data
 
-def run_layerwise_sensitivity_analysis():
+def run_layerwise_sensitivity_analysis(model_name, datasets, sample_counts):
+    Config.set_model(model_name)
+    
+    print(f"[MODEL] {model_name}")
+    print(f"[DATASETS] {datasets}")
+    print(f"[SAMPLE_COUNTS] {sample_counts}")
+
     print(f"[LOADING MODEL] {Config.MODEL_ID}")
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
     model = AutoModelForCausalLM.from_pretrained(
@@ -18,9 +24,6 @@ def run_layerwise_sensitivity_analysis():
         device_map=Config.DEVICE
     )
 
-    datasets = ["gsm8k", "wikitext"]
-    sample_counts = [64, 128, 256]
-
     results_summary = []
 
     print("[STARTING FISHER COMPUTATION]")
@@ -28,12 +31,7 @@ def run_layerwise_sensitivity_analysis():
         for n_samples in sample_counts:
             print(f"[FISHER] [{dataset}] [{n_samples} samples]")
             try:
-                original_samples = Config.CALIBRATION_SAMPLES
-                Config.CALIBRATION_SAMPLES = n_samples
-
-                scores = compute_fisher(model, tokenizer, dataset)
-
-                Config.CALIBRATION_SAMPLES = original_samples
+                scores = compute_fisher(model, tokenizer, dataset, n_samples=n_samples)
 
                 filename = f"fisher_{dataset}_{n_samples}.json"
                 output_path = os.path.join(Config.MAPS_DIR, filename)
@@ -128,4 +126,14 @@ def run_layerwise_sensitivity_analysis():
     return results_summary
 
 if __name__ == "__main__":
-    run_layerwise_sensitivity_analysis()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "llama", "phi"], help="Name of the model to analyze")
+    parser.add_argument("--datasets", nargs="+", default=["gsm8k", "wikitext"], help="List of datasets to use for analysis")
+    parser.add_argument("--sample_counts", nargs="+", type=int, default=[64, 128, 256], help="List of sample counts for Fisher analysis")
+    args = parser.parse_args()
+
+    run_layerwise_sensitivity_analysis(
+        model_name=args.model_name,
+        datasets=args.datasets,
+        sample_counts=args.sample_counts
+    )

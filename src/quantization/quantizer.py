@@ -65,20 +65,22 @@ class SelectiveQuantizer:
 
         del og_layer
 
-    def quantize(self, method = "kms", percentile = 0.20, verbose = True):
-        # main entry point to apply quantization
-        method = method.upper()
-        if method == "PCT":
-            threshold = self._get_threshold_pct(percentile)
-        elif method == "KMS":
-            threshold = self._get_threshold_kms()
-        elif method == "ELB":
-            threshold = self._get_threshold_elb()
-        else:
+    def quantize(self, method="kms", percentile=0.20, verbose=True):
+        method = method.lower()
+        
+        threshold_methods = {
+            "pct": lambda: self._get_threshold_pct(percentile),
+            "kms": self._get_threshold_kms,
+            "elb": self._get_threshold_elb,
+        }
+        
+        if method not in threshold_methods:
             raise ValueError(f"[UNKNOWN METHOD] [{method}]")
 
+        threshold = threshold_methods[method]()
+
         if verbose:
-            print(f"[COMPUTED THRESHOLD] [{method}]")
+            print(f"[COMPUTED THRESHOLD] [{method.upper()}]")
 
         replaces = []
         unchanged_count = 0
@@ -93,14 +95,12 @@ class SelectiveQuantizer:
                     score = self.map[param_key]
 
                     if score < threshold:
-                        # low sensitivity, so we'll quantize those
                         replaces.append((name, module))
                     
                     else:
                         unchanged_count += 1 
 
                 else:
-                    # missing from the map, defaults to unchanged 
                     if verbose:
                         print(f"[MISSING SCORE] [{name}]")
 

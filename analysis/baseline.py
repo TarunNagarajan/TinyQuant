@@ -3,12 +3,13 @@ import sys
 import json
 import torch
 import logging
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
 from torch.nn import CrossEntropyLoss
-from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config import Config
 
 def setup_logging(log_path):
@@ -18,19 +19,16 @@ def setup_logging(log_path):
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_path),
-            logging.StreamHandler()
+            logging.StreamHandler(sys.stdout)
         ]
     )
 
-def evaluate_gsm8k(model, tokenizer, device):
+def evaluate_gsm8k(model, tokenizer, device, n_samples=100):
     """Evaluate model on GSM8K test set"""
     logging.info("Starting GSM8K evaluation")
     
-    # Load GSM8K test dataset
     dataset = load_dataset("gsm8k", "main", split="test")
-    
-    # Take a sample for evaluation (use subset to avoid long evaluation times)
-    dataset = dataset.select(range(min(100, len(dataset))))  # Using first 100 samples for efficiency
+    dataset = dataset.select(range(min(n_samples, len(dataset))))
     
     correct = 0
     total = 0
@@ -39,7 +37,6 @@ def evaluate_gsm8k(model, tokenizer, device):
         question = example['question']
         answer = example['answer']
         
-        # Format the question for the model
         prompt = f"Question: {question}\nAnswer:"
         
         inputs = tokenizer(prompt, return_tensors="pt", truncation=True, padding=True, max_length=2048).to(device)
@@ -54,46 +51,39 @@ def evaluate_gsm8k(model, tokenizer, device):
         
         generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         
-        # Extract the generated answer part
         try:
             answer_part = generated_text.split("Answer:")[-1].strip()
         except:
             answer_part = generated_text
         
-        # Check if answer is correct (simple keyword matching for now)
         expected_answer = answer.split("####")[-1].strip() if "####" in answer else answer
         
-        # Simple numeric answer check (GSM8K typically has numeric answers)
         try:
             gen_num = float(''.join(filter(lambda x: x.isdigit() or x in '.-', answer_part.split())))
             exp_num = float(''.join(filter(lambda x: x.isdigit() or x in '.-', expected_answer.split())))
             
-            if abs(gen_num - exp_num) < 0.01:  # Allow small floating point differences
+            if abs(gen_num - exp_num) < 0.01:
                 correct += 1
         except:
-            # If numeric comparison fails, check for exact text match
             if expected_answer.lower() in answer_part.lower():
                 correct += 1
         
         total += 1
         
-        if i % 10 == 0 and i > 0:  # Log progress every 10 samples
-            logging.info(f"GSM8K Progress: {i}/{total}, Accuracy so far: {correct/total:.4f}")
+        if i % 10 == 0 and i > 0:
+            logging.info(f"GSM8K Progress: {i}/{len(dataset)}, Accuracy so far: {correct/total:.4f}")
     
     accuracy = correct / total if total > 0 else 0
     logging.info(f"GSM8K Evaluation Complete. Accuracy: {accuracy:.4f} ({correct}/{total})")
     return accuracy
 
-def evaluate_wikitext(model, tokenizer, device):
+def evaluate_wikitext(model, tokenizer, device, n_samples=50):
     """Evaluate model on Wikitext using perplexity"""
     logging.info("Starting Wikitext evaluation")
     
-    # Load Wikitext validation dataset
     dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="validation")
-    
-    # Take a sample for evaluation (use subset to avoid long evaluation times)
     dataset = dataset.filter(lambda x: len(x['text']) > 0 and not x['text'].startswith(" ="))
-    dataset = dataset.select(range(min(50, len(dataset))))  # Using first 50 samples for efficiency
+    dataset = dataset.select(range(min(n_samples, len(dataset))))
 
     model.eval()
     total_loss = 0
@@ -112,13 +102,12 @@ def evaluate_wikitext(model, tokenizer, device):
             outputs = model(**inputs, labels=inputs['input_ids'])
             loss = outputs.loss
             
-            # Add the loss value multiplied by the number of valid tokens
             total_loss += loss.item() * inputs['input_ids'].size(1)
             total_tokens += inputs['input_ids'].size(1)
         
-        if i % 10 == 0 and i > 0:  # Log progress every 10 samples
+        if i % 10 == 0 and i > 0:
             current_perplexity = np.exp(total_loss / total_tokens) if total_tokens > 0 else float('inf')
-            logging.info(f"Wikitext Progress: {i}, Current Perplexity: {current_perplexity:.4f}")
+            logging.info(f"Wikitext Progress: {i}/{len(dataset)}, Current Perplexity: {current_perplexity:.4f}")
     
     avg_loss = total_loss / total_tokens if total_tokens > 0 else float('inf')
     perplexity = np.exp(avg_loss)
@@ -126,19 +115,12 @@ def evaluate_wikitext(model, tokenizer, device):
     logging.info(f"Wikitext Evaluation Complete. Perplexity: {perplexity:.4f}")
     return perplexity
 
-def run_baseline_evaluation(eval_type="both", log_dir=None):
-    """
-    Run baseline evaluation on specified dataset(s)
+def run_baseline_evaluation(model_name, eval_type="both", gsm8k_samples=100, wikitext_samples=50):
+    Config.set_model(model_name)
     
-    Args:
-        eval_type: "gsm8k", "wikitext", or "both"
-        log_dir: Directory to save logs. If None, uses default results/logs
-    """
-    if log_dir is None:
-        log_dir = os.path.join(Config.RESULTS_DIR, "logs")
-        os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(Config.LOGS_DIR, "baseline_eval.log")
+    setup_logging(log_path)
     
-    # Load model and tokenizer
     logging.info(f"Loading model: {Config.MODEL_ID}")
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_ID,
@@ -148,7 +130,6 @@ def run_baseline_evaluation(eval_type="both", log_dir=None):
     
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
     
-    # Add padding token if not present
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     
@@ -158,29 +139,14 @@ def run_baseline_evaluation(eval_type="both", log_dir=None):
     results = {}
     
     if eval_type in ["gsm8k", "both"]:
-        log_path = os.path.join(log_dir, "gsm8k_baseline.log")
-        setup_logging(log_path)
-        gsm8k_accuracy = evaluate_gsm8k(model, tokenizer, device)
-        results["gsm8k"] = gsm8k_accuracy
-        
-        # Save GSM8K result
-        gsm8k_result_file = os.path.join(log_dir, "gsm8k_baseline_result.json")
-        with open(gsm8k_result_file, 'w') as f:
-            json.dump({"accuracy": gsm8k_accuracy, "dataset": "gsm8k"}, f, indent=2)
+        gsm8k_accuracy = evaluate_gsm8k(model, tokenizer, device, n_samples=gsm8k_samples)
+        results["gsm8k_accuracy"] = gsm8k_accuracy
     
     if eval_type in ["wikitext", "both"]:
-        log_path = os.path.join(log_dir, "wikitext_baseline.log")
-        setup_logging(log_path)
-        wikitext_perplexity = evaluate_wikitext(model, tokenizer, device)
-        results["wikitext"] = wikitext_perplexity
-        
-        # Save Wikitext result
-        wikitext_result_file = os.path.join(log_dir, "wikitext_baseline_result.json")
-        with open(wikitext_result_file, 'w') as f:
-            json.dump({"perplexity": wikitext_perplexity, "dataset": "wikitext"}, f, indent=2)
+        wikitext_perplexity = evaluate_wikitext(model, tokenizer, device, n_samples=wikitext_samples)
+        results["wikitext_perplexity"] = wikitext_perplexity
     
-    # Save combined results
-    combined_result_file = os.path.join(log_dir, "baseline_results.json")
+    combined_result_file = os.path.join(Config.LOGS_DIR, "baseline_results.json")
     with open(combined_result_file, 'w') as f:
         json.dump(results, f, indent=2)
     
@@ -191,10 +157,17 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "llama", "phi"], help="Name of the model to evaluate")
     parser.add_argument("--eval_type", type=str, choices=["gsm8k", "wikitext", "both"], 
                         default="both", help="Type of evaluation to run")
-    parser.add_argument("--log_dir", type=str, help="Directory to save logs")
+    parser.add_argument("--gsm8k_samples", type=int, default=100, help="Number of samples for GSM8K evaluation")
+    parser.add_argument("--wikitext_samples", type=int, default=50, help="Number of samples for Wikitext evaluation")
     
     args = parser.parse_args()
     
-    run_baseline_evaluation(eval_type=args.eval_type, log_dir=args.log_dir)
+    run_baseline_evaluation(
+        model_name=args.model_name,
+        eval_type=args.eval_type,
+        gsm8k_samples=args.gsm8k_samples,
+        wikitext_samples=args.wikitext_samples
+    )

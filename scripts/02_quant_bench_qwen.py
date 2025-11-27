@@ -1,7 +1,6 @@
 import re
 import json
 import torch
-import gc
 import sys
 import os
 import argparse
@@ -12,6 +11,7 @@ from tqdm import tqdm
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.quantization.quantizer import SelectiveQuantizer
+from src.config import Config
 
 def get_model_size_mb(model):
     param_size = 0
@@ -61,37 +61,31 @@ def extract_gold_answer(answer_text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
-    parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-Math-1.5B-Instruct")
-    parser.add_argument("--model_name", type=str, default="qwen", help="Name of the model to evaluate")
-    parser.add_argument("--map_path", type=str, default="results/maps/qwen/fisher_gsm8k_128.json")
+    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_128.json")
     parser.add_argument("--samples", type=int, default=500)
     args = parser.parse_args()
 
-    # Update map_path based on model_name if it's the default
-    if args.map_path == "results/maps/qwen/fisher_gsm8k_128.json" and args.model_name != "qwen":
-        args.map_path = f"results/maps/{args.model_name}/fisher_gsm8k_128.json"
+    Config.set_model("qwen")
+    
+    map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
 
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_INTERVAL = 50
 
-    log_dir = f"results/logs/{args.model_name}"
-    os.makedirs(log_dir, exist_ok=True)
-
-    CHECKPOINT_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}_checkpoint.jsonl")
-    OUTPUT_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}.jsonl")
-    SUMMARY_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}_summary.json")
+    CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_checkpoint.jsonl")
+    OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}.jsonl")
+    SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_summary.json")
 
     print(f"Mode: {args.mode}")
-    print(f"Device: {DEVICE}")
+    print(f"Device: {Config.DEVICE}")
 
     dataset = load_dataset("openai/gsm8k", "main", split="test")
     dataset = dataset.select(range(min(args.samples, len(dataset))))
 
-    tokenizer = AutoTokenizer.from_pretrained(args.model)
+    tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
     
     if args.mode == "baseline":
         model = AutoModelForCausalLM.from_pretrained(
-            args.model,
+            Config.MODEL_ID,
             device_map="auto",
             torch_dtype=torch.bfloat16
         ).eval()
@@ -103,19 +97,19 @@ def main():
             bnb_4bit_quant_type="nf4",
         )
         model = AutoModelForCausalLM.from_pretrained(
-            args.model,
+            Config.MODEL_ID,
             quantization_config=bnb_config,
             device_map="auto"
         ).eval()
 
     elif args.mode == "selective":
         model = AutoModelForCausalLM.from_pretrained(
-            args.model,
+            Config.MODEL_ID,
             device_map="auto",
             torch_dtype=torch.bfloat16
         ).eval()
         
-        with open(args.map_path, "r") as f:
+        with open(map_path, "r") as f:
             sensitivity_map = json.load(f)
         
         quantizer = SelectiveQuantizer(model, sensitivity_map)
@@ -207,7 +201,7 @@ def main():
 
     summary = {
         "mode": args.mode,
-        "model": args.model,
+        "model": Config.MODEL_ID,
         "accuracy": accuracy,
         "size_mb": model_size,
         "peak_vram_gb": peak_vram,

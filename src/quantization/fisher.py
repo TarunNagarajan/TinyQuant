@@ -3,12 +3,12 @@ from tqdm import tqdm
 from src.config import Config
 from src.data.loader import get_calibration_data
 
-def compute_fisher(model, tokenizer, dsname, reduction="mean"):
+def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
     assert reduction in ("mean", "sum")
 
     model.eval()
     sensitivity_map = {}
-    raw_samples = get_calibration_data(dsname, tokenizer)
+    raw_samples = get_calibration_data(dsname, n_samples=n_samples)
 
     print(f"[{dsname}] [COMPUTING FISHER INFO]")
 
@@ -26,8 +26,8 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean"):
         model.zero_grad()
         outputs = model(**inputs, labels=inputs["input_ids"])
 
-        if "labels" in inputs:
-            active_token_count = int((inputs["input_ids"] != -100).sum().item())
+        if "labels" in inputs and inputs["labels"] is not None:
+            active_token_count = int((inputs["labels"] != -100).sum().item())
         else:
             active_token_count = int(inputs["input_ids"].numel())
 

@@ -4,6 +4,7 @@ import json
 import pandas as pd
 import numpy as np
 from collections import defaultdict
+import argparse
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -68,7 +69,7 @@ def aggregate_fisher_per_layer(fisher_data):
 
     return dict(layer_aggregated), fisher_by_dataset
 
-def identify_top_k_sensitive_layers(layer_data, k=5):
+def identify_top_k_sensitive_layers(layer_data, k=10):
     sorted_layers = sorted(layer_data.items(), key=lambda x: x[1]["fisher_mean"], reverse=True)
     return sorted_layers[:k]
 
@@ -100,8 +101,7 @@ def compute_module_statistics(module_groups):
 
     for module_type, layers in module_groups.items():
         fisher_means = [layer[1]["fisher_mean"] for layer in layers]
-        fisher_sums = [layer[1]["fisher_sum"] for layer in layers]
-
+        
         module_stats[module_type] = {
             "mean_fisher_mean": np.mean(fisher_means) if fisher_means else 0,
             "max_fisher_mean": np.max(fisher_means) if fisher_means else 0,
@@ -149,7 +149,7 @@ def create_parameter_ranking_per_dataset(fisher_by_dataset):
 
     return all_params_by_dataset
 
-def generate_zones_per_dataset(param_scores, top_percent=0.10):
+def generate_zones_per_dataset(param_scores, top_percent):
     names = sorted(param_scores.items(), key=lambda x: x[1], reverse=True)
     n = len(names)
     a = int(n * top_percent)
@@ -173,10 +173,10 @@ def generate_quantization_zones_per_dataset(fisher_by_dataset, top_percent=0.1):
 
     return all_zones
 
-def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, quantization_zones, output_dir):
+def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, quantization_zones, top_k, output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
-    top_layers = identify_top_k_sensitive_layers(aggregated_data, k=10)
+    top_layers = identify_top_k_sensitive_layers(aggregated_data, k=top_k)
     top_layers_df = pd.DataFrame([
         {
             'layer_name': layer[0],
@@ -190,15 +190,12 @@ def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, q
     module_stats_df = pd.DataFrame.from_dict(module_stats, orient='index')
     module_stats_df.index.name = 'module_type'
 
-    # Flatten param rankings by dataset for CSV
     all_param_rankings = []
     for dataset, rankings in param_rankings_by_dataset.items():
-        for param in rankings:
-            all_param_rankings.append(param)
+        all_param_rankings.extend(rankings)
 
     param_rankings_df = pd.DataFrame(all_param_rankings)
 
-    # Flatten quantization zones for CSV
     all_zones = []
     for dataset, zones in quantization_zones.items():
         all_zones.extend(zones)
@@ -210,12 +207,10 @@ def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, q
     param_rankings_df.to_csv(os.path.join(output_dir, 'parameter_rankings.csv'), index=False)
     zones_df.to_csv(os.path.join(output_dir, 'quantization_zones.csv'), index=False)
 
-    # Also save per-dataset parameter rankings
     for dataset, rankings in param_rankings_by_dataset.items():
         df = pd.DataFrame(rankings)
         df.to_csv(os.path.join(output_dir, f'parameter_rankings_{dataset}.csv'), index=False)
 
-    # Also save per-dataset zones
     for dataset, zones in quantization_zones.items():
         df = pd.DataFrame(zones)
         df.to_csv(os.path.join(output_dir, f'quantization_zones_{dataset}.csv'), index=False)
@@ -225,8 +220,8 @@ def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, q
         f.write("SENSITIVITY ANALYSIS SUMMARY\n")
         f.write("=" * 40 + "\n\n")
 
-        f.write("Top 10 Most Sensitive Layers:\n")
-        for i, layer in enumerate(top_layers[:10]):
+        f.write(f"Top {top_k} Most Sensitive Layers:\n")
+        for i, layer in enumerate(top_layers):
             f.write(f"{i+1:2d}. {layer[0]}: Fisher Mean = {layer[1]['fisher_mean']:.6f}\n")
 
         f.write(f"\nModule Type Statistics:\n")
@@ -236,7 +231,10 @@ def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, q
 
     return top_layers_df, module_stats_df, param_rankings_df, zones_df
 
-def run_full_analysis():
+def run_full_analysis(model_name, top_k=10, top_percent=0.1):
+    Config.set_model(model_name)
+    
+    print(f"[MODEL] {model_name}")
     print("[LOADING] All Fisher and magnitude JSON results")
     all_data = organize_and_preprocess_data()
 
@@ -257,12 +255,12 @@ def run_full_analysis():
     param_rankings_by_dataset = create_parameter_ranking_per_dataset(fisher_by_dataset)
 
     print("[GENERATING] Quantization zones (per dataset)")
-    quantization_zones = generate_quantization_zones_per_dataset(fisher_by_dataset)
+    quantization_zones = generate_quantization_zones_per_dataset(fisher_by_dataset, top_percent=top_percent)
 
     print("[GENERATING] Reports")
-    output_dir = os.path.join(Config.RESULTS_DIR, 'reports')
+    output_dir = os.path.join(Config.RESULTS_DIR, 'reports', model_name)
     top_layers_df, module_stats_df, param_rankings_df, zones_df = generate_reports(
-        layer_aggregated, module_stats, param_rankings_by_dataset, quantization_zones, output_dir
+        layer_aggregated, module_stats, param_rankings_by_dataset, quantization_zones, top_k, output_dir
     )
 
     print(f"[SAVED] Analysis reports to {output_dir}")
@@ -280,4 +278,10 @@ def run_full_analysis():
     }
 
 if __name__ == "__main__":
-    results = run_full_analysis()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "llama", "phi"], help="Name of the model to analyze")
+    parser.add_argument("--top_k", type=int, default=10, help="Number of top sensitive layers to report")
+    parser.add_argument("--top_percent", type=float, default=0.1, help="Top percentage of layers to include in quantization zone 'A'")
+    args = parser.parse_args()
+    
+    run_full_analysis(model_name=args.model_name, top_k=args.top_k, top_percent=args.top_percent)
