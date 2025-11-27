@@ -62,15 +62,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
     parser.add_argument("--model", type=str, default="Qwen/Qwen2.5-Math-1.5B-Instruct")
-    parser.add_argument("--map_path", type=str, default="results/maps/fisher_gsm8k_128.json")
+    parser.add_argument("--model_name", type=str, default="qwen", help="Name of the model to evaluate")
+    parser.add_argument("--map_path", type=str, default="results/maps/qwen/fisher_gsm8k_128.json")
     parser.add_argument("--samples", type=int, default=500)
     args = parser.parse_args()
 
+    # Update map_path based on model_name if it's the default
+    if args.map_path == "results/maps/qwen/fisher_gsm8k_128.json" and args.model_name != "qwen":
+        args.map_path = f"results/maps/{args.model_name}/fisher_gsm8k_128.json"
+
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     CHECKPOINT_INTERVAL = 50
-    CHECKPOINT_FILE = f"gsm8k_{args.mode}_checkpoint.jsonl"
-    OUTPUT_FILE = f"gsm8k_{args.mode}.jsonl"
-    SUMMARY_FILE = f"gsm8k_{args.mode}_summary.json"
+
+    log_dir = f"results/logs/{args.model_name}"
+    os.makedirs(log_dir, exist_ok=True)
+
+    CHECKPOINT_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}_checkpoint.jsonl")
+    OUTPUT_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}.jsonl")
+    SUMMARY_FILE = os.path.join(log_dir, f"gsm8k_{args.mode}_summary.json")
 
     print(f"Mode: {args.mode}")
     print(f"Device: {DEVICE}")
