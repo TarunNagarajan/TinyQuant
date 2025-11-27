@@ -23,11 +23,21 @@ def get_calibration_data(dataset_name, n_samples=None):
             data = cleantext
         else:
             data = random.sample(cleantext, n_samples)
+    
+    elif dataset_name == "math":
+        ds = load_dataset("hendrycks/competition_math", split="train")
+        ds = ds.shuffle(seed=42).select(range(n_samples))
+        data = [row['problem'] for row in ds]
 
     else:
         raise ValueError("unknown dataset.")
 
     return data
 
-def get_eval_dataset():
-    return load_dataset("gsm8k", "main", split="test")
+def get_eval_dataset(dataset_name="gsm8k"):
+    if dataset_name == "gsm8k":
+        return load_dataset("gsm8k", "main", split="test")
+    elif dataset_name == "math":
+        return load_dataset("hendrycks/competition_math", split="test")
+    else:
+        raise ValueError(f"Evaluation dataset for '{dataset_name}' not configured.")

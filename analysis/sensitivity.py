@@ -279,7 +279,7 @@ def run_full_analysis(model_name, top_k=10, top_percent=0.1):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "qwen_3b", "phi", "stablelm"], help="Name of the model to analyze")
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "qwen_3b", "phi", "stablelm", "llama_3b"], help="Name of the model to analyze")
     parser.add_argument("--top_k", type=int, default=10, help="Number of top sensitive layers to report")
     parser.add_argument("--top_percent", type=float, default=0.1, help="Top percentage of layers to include in quantization zone 'A'")
     args = parser.parse_args()

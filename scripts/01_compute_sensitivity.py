@@ -17,7 +17,7 @@ def main():
         "--model_name",
         type=str,
         required=True,
-        choices=["qwen", "qwen_3b", "phi", "stablelm"],
+        choices=["qwen", "qwen_3b", "phi", "stablelm", "llama_3b"],
         help="Name of the model to use"
     )
     parser.add_argument(
@@ -29,7 +29,7 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        choices=["gsm8k", "wikitext"],
+        choices=["gsm8k", "wikitext", "math"],
         default="gsm8k"
     )
     parser.add_argument(

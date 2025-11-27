@@ -157,7 +157,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "qwen_3b", "phi", "stablelm"], help="Name of the model to evaluate")
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "qwen_3b", "phi", "stablelm", "llama_3b"], help="Name of the model to evaluate")
     parser.add_argument("--eval_type", type=str, choices=["gsm8k", "wikitext", "both"], 
                         default="both", help="Type of evaluation to run")
     parser.add_argument("--gsm8k_samples", type=int, default=100, help="Number of samples for GSM8K evaluation")

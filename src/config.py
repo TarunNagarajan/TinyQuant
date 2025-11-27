@@ -27,6 +27,8 @@ class Config:
             Config.MODEL_ID = "microsoft/phi-2"
         elif model_name == "stablelm":
             Config.MODEL_ID = "stabilityai/StableLM-2-2B-Base"
+        elif model_name == "llama_3b":
+            Config.MODEL_ID = "unsloth/llama-3.2-3b-Instruct"
         else:
             raise ValueError(f"Unknown model name: {model_name}")
 
