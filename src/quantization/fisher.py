@@ -31,13 +31,13 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
         else:
             active_token_count = int(inputs["input_ids"].numel())
 
-        loss = outputs.loss * max(active_token_count, 1)
+        loss = outputs.loss
         loss.backward()
 
         with torch.no_grad():
             for name, param in model.named_parameters():
                 if param.grad is not None and "weight" in name:
-                    grad_sq = param.grad.detach().cpu().float().square().mean().item()
+                    grad_sq = param.grad.detach().cpu().float().square().sum().item()
                     sensitivity_map[name] = sensitivity_map.get(name, 0.0) + grad_sq
 
         model.zero_grad()
