@@ -38,14 +38,14 @@ class SelectiveQuantizer:
         index = kneedle.kneedle
 
         if index is None:
-            return score[int(len(scores) * 0.20)]
+            return scores[int(len(scores) * 0.20)]
 
         return scores[index]
 
     def _replace_linear_with_bnb(self, full_name, og_layer):
         # physically replace torch.nn.Linear with bnb.nn.Linear4bit
         parent_name, child_name = full_name.rsplit(".", 1)
-        parent = model.get_submodule(parent_name)
+        parent = self.model.get_submodule(parent_name)
 
         new_layer = bnb.nn.Linear4bit(
             input_features = og_layer.in_features,
@@ -58,7 +58,7 @@ class SelectiveQuantizer:
         new_layer.weight.data = og_layer.weight.data
 
         if og_layer.bias is not None:
-            new_layer.bias = old_layer.bias 
+            new_layer.bias = og_layer.bias 
 
         new_layer = new_layer.to(og_layer.weight.device)
         setattr(parent, child_name, new_layer)
@@ -69,11 +69,11 @@ class SelectiveQuantizer:
         # main entry point to apply quantization
         method = method.upper()
         if method == "PCT":
-            threshold = _get_threshold_pct(percentile)
+            threshold = self._get_threshold_pct(percentile)
         elif method == "KMS":
-            threshold = _get_threshold_kms()
+            threshold = self._get_threshold_kms()
         elif method == "ELB":
-            threshold = _get_threshold_elb()
+            threshold = self._get_threshold_elb()
         else:
             raise ValueError(f"[UNKNOWN METHOD] [{method}]")
 
@@ -84,7 +84,7 @@ class SelectiveQuantizer:
         unchanged_count = 0
         total_linear = 0
         
-        for name, module in model.named_modules(): 
+        for name, module in self.model.named_modules(): 
             if isinstance(module, nn.Linear):
                 total_linear += 1 
                 param_key = f"{name}.weight"
