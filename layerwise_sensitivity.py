@@ -127,7 +127,7 @@ def run_layerwise_sensitivity_analysis(model_name, datasets, sample_counts):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "llama", "phi"], help="Name of the model to analyze")
+    parser.add_argument("--model_name", type=str, required=True, choices=["qwen", "qwen_3b", "phi"], help="Name of the model to analyze")
     parser.add_argument("--datasets", nargs="+", default=["gsm8k", "wikitext"], help="List of datasets to use for analysis")
     parser.add_argument("--sample_counts", nargs="+", type=int, default=[64, 128, 256], help="List of sample counts for Fisher analysis")
     args = parser.parse_args()

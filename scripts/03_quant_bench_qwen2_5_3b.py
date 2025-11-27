@@ -13,29 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.quantization.quantizer import SelectiveQuantizer
 from src.config import Config
 
-COT_EXAMPLES = """Question: There are 15 trees in the grove. Grove workers will plant trees in the grove today. After they are done, there will be 21 trees. How many trees did the grove workers plant today?
-Answer: There are 15 trees originally. Then there were 21 trees after planting. So the number of trees planted is 21 - 15 = 6. The answer is 6.
-
-Question: If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?
-Answer: There are 3 cars already, and 2 more arrive, for a total of 3 + 2 = 5 cars. The answer is 5.
-
-Question: Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?
-Answer: Leah had 32 chocolates and her sister had 42. In total they had 32 + 42 = 74. They ate 35. So they have 74 - 35 = 39 pieces left. The answer is 39.
-
-Question: Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?
-Answer: Jason started with 20. He ended with 12. He gave away 20 - 12 = 8 lollipops. The answer is 8.
-
-Question: Shawn has five toys. For Christmas, he got two toys each from his mom and dad. How many toys does he have now?
-Answer: Shawn has 5 toys. Mom gave him 2. Dad gave him 2. Total new toys = 2 + 2 = 4. Total toys now = 5 + 4 = 9. The answer is 9.
-
-Question: There were 9 computers in the server room. Five more computers were installed each day for 4 days. How many computers are now in the server room?
-Answer: There were 9 computers. 5 computers were added for 4 days. So 5 * 4 = 20 computers were added. Total computers = 9 + 20 = 29. The answer is 29.
-
-Question: Michael had 58 golf balls. On tuesday, he lost 23 golf balls. On wednesday, he lost 2 more. How many golf balls did he have at the end of wednesday?
-Answer: Michael started with 58. Tuesday he lost 23, so he had 58 - 23 = 35. Wednesday he lost 2 more, so 35 - 2 = 33. The answer is 33.
-
-Question: Olivia has $23. She bought five bagels for $3 each. How much money does she have left?
-Answer: She bought 5 bagels. Each cost $3. Total cost = 5 * 3 = 15. She started with $23. Money left = 23 - 15 = 8. The answer is 8."""
+COT_EXAMPLES = ""
 
 def get_model_size_mb(model):
     param_size = 0
@@ -77,19 +55,21 @@ def extract_gold_answer(answer_text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
-    parser.add_argument("--map_filename", type=str, default="fisher_hellaswag_64.json")
-    parser.add_argument("--samples", type=int, default=200)
+    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_128.json")
+    parser.add_argument("--samples", type=int, default=500)
     args = parser.parse_args()
 
-    Config.set_model("llama")
+    Config.set_model("qwen_3b") # Still using "llama" as the key, but it maps to Qwen2.5 3B
     
     map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
+
+    CHECKPOINT_INTERVAL = 50
 
     CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_checkpoint.jsonl")
     OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}.jsonl")
     SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_summary.json")
 
-    print(f"Running Llama Benchmark | Mode: {args.mode}")
+    print(f"Running Qwen2.5-3B Benchmark | Mode: {args.mode}")
 
     dataset = load_dataset("openai/gsm8k", "main", split="test")
     dataset = dataset.select(range(min(args.samples, len(dataset))))
@@ -128,14 +108,17 @@ def main():
     for idx in tqdm(range(len(dataset))):
         ex = dataset[idx]
         question = ex['question']
-        
-        content = f"Solve the following math problems step by step. Show your reasoning clearly.\n\n{COT_EXAMPLES}\n\nQuestion: {question}\nAnswer:"
-        
+
         messages = [
-            {"role": "user", "content": content}
+            {"role": "system", "content": "Please reason step by step, and put your final answer within \\boxed{}."},
+            {"role": "user", "content": question}
         ]
-        
-        text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+        text = tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
         inputs = tokenizer([text], return_tensors="pt").to(Config.DEVICE)
 
         with torch.no_grad():
@@ -161,7 +144,7 @@ def main():
     peak_vram = torch.cuda.max_memory_allocated() / 1024**3
     accuracy = correct / len(dataset)
 
-    print(f"Llama {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+    print(f"Qwen2.5-3B {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
 
     with open(SUMMARY_FILE, "w") as f:
         json.dump({

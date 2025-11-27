@@ -17,7 +17,7 @@ def main():
         "--model_name",
         type=str,
         required=True,
-        choices=["qwen", "llama", "phi"],
+        choices=["qwen", "qwen_3b", "phi"],
         help="Name of the model to use"
     )
     parser.add_argument(

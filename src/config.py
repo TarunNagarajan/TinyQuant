@@ -21,7 +21,7 @@ class Config:
         Config.MODEL_NAME = model_name
         if model_name == "qwen":
             Config.MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"
-        elif model_name == "llama":
+        elif model_name == "qwen_3b":
             Config.MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
         elif model_name == "phi":
             Config.MODEL_ID = "microsoft/phi-2"
