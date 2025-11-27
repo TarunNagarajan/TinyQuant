@@ -25,19 +25,27 @@ def get_model_size_mb(model):
     return (param_size + buffer_size) / 1024**2
 
 def normalize_numeric_answer(answer):
-    if not answer: return ""
-    answer = str(answer).strip().replace(',', '').replace('$', '').replace('%', '').replace(' ', '')
+    if not answer:
+        return ""
+    answer = str(answer).strip()
+    answer = answer.replace(',', '')
+    answer = answer.replace('$', '')
+    answer = answer.replace('%', '')
+    answer = answer.replace(' ', '')
     try:
         num = float(answer)
-        if num == int(num): return str(int(num))
+        if not (-1e15 < num < 1e15):
+            return answer
+        if num == int(num):
+            return str(int(num))
         return str(num)
-    except:
+    except (ValueError, OverflowError):
         return answer
 
 def extract_answer(text):
-    # Llama CoT usually ends with "The answer is X."
-    # We look for the last number in the text
-    text = text.split("Answer:")[-1] # Focus on the generated part
+    boxed_match = re.search(r"\\boxed\{([^}]+)\}", text)
+    if boxed_match:
+        return normalize_numeric_answer(boxed_match.group(1))
     nums = re.findall(r"-?\d+\.?\d*", text)
     if nums:
         return normalize_numeric_answer(nums[-1])
