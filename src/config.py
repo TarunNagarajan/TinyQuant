@@ -25,6 +25,8 @@ class Config:
             Config.MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
         elif model_name == "phi":
             Config.MODEL_ID = "microsoft/phi-2"
+        elif model_name == "stablelm":
+            Config.MODEL_ID = "stabilityai/StableLM-2-2B-Base"
         else:
             raise ValueError(f"Unknown model name: {model_name}")
 
