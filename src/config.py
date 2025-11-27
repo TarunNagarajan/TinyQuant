@@ -22,7 +22,7 @@ class Config:
         if model_name == "qwen":
             Config.MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"
         elif model_name == "llama":
-            Config.MODEL_ID = "PLEASE_PROVIDE_VALID_LLAMA32_MODEL_ID"
+            Config.MODEL_ID = "Qwen/Qwen2.5-3B-Instruct"
         elif model_name == "phi":
             Config.MODEL_ID = "microsoft/phi-2"
         else:
