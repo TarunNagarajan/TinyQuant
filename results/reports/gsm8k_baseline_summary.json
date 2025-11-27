@@ -1,0 +1,8 @@
+{
+  "mode": "baseline",
+  "model": "Qwen/Qwen2.5-Math-1.5B-Instruct",
+  "accuracy": 0.85,
+  "size_mb": 2944.401611328125,
+  "peak_vram_gb": 2.914926528930664,
+  "total_time_sec": 6179.496591329575
+}
