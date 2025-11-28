@@ -37,8 +37,15 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
         with torch.no_grad():
             for name, param in model.named_parameters():
                 if param.grad is not None and "weight" in name:
+                    # Calculate sum of squares
                     grad_sq = param.grad.detach().cpu().float().square().sum().item()
-                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + grad_sq
+                    
+                    # Normalize by the number of elements (parameters) in the layer
+                    # This prevents large layers from dominating simply due to size
+                    param_count = param.numel() 
+                    normalized_score = grad_sq / param_count
+                    
+                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + normalized_score
 
         model.zero_grad()
         del inputs, outputs, loss
