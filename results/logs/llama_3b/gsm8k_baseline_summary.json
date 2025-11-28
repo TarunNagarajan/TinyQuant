@@ -1,0 +1,19 @@
+{
+  "mode": "baseline",
+  "accuracy": 0.685,
+  "size_mb": 6127.834228515625,
+  "peak_vram_gb": 3.716796875,
+  "time": 2296.581062078476,
+  "args": {
+    "mode": "baseline",
+    "samples": 200,
+    "selection_method": "knapsack",
+    "sensitivity_method": "perturbation",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 32,
+    "budget_mb": 4096,
+    "percentile": 0.05,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95
+  }
+}

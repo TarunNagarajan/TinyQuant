@@ -40,7 +40,8 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
                     # identifying small but critical layers (like LayerNorms/Attention)
                     density_score = grad_sq / param.numel()
                     
-                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + density_score
+                    module_name = name.replace(".weight", "")
+                    sensitivity_map[module_name] = sensitivity_map.get(module_name, 0.0) + density_score
 
         model.zero_grad()
         del inputs, outputs, loss

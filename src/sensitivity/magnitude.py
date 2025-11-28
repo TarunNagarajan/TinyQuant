@@ -8,6 +8,7 @@ def compute_magnitude(model):
     with torch.no_grad():
         for name, param in model.named_parameters():
             if param.requires_grad and "weight" in name:
-                sensitivity_map[name] = param.pow(2).sum().item()
+                module_name = name.replace(".weight", "")
+                sensitivity_map[module_name] = param.pow(2).sum().item()
     
     return sensitivity_map

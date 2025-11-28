@@ -128,12 +128,13 @@ class SelectiveQuantizer:
             layers_to_keep = []
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
-                    param_key = f"{name}.weight"
-                    if param_key in self.sensitivity_map:
-                        if self.sensitivity_map[param_key] >= threshold:
+                    if name in self.sensitivity_map:
+                        if self.sensitivity_map[name] >= threshold:
                             layers_to_keep.append(name)
                     else:
-                        layers_to_keep.append(name) # Keep if no score
+                        # If a linear layer has no score, it will not be kept and will be quantized.
+                        # This is a reasonable default for layers without sensitivity info.
+                        pass
 
         # Quantize layers that are not in the keep list
         replaces = []

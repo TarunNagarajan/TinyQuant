@@ -1,0 +1,19 @@
+{
+  "mode": "naive",
+  "accuracy": 0.655,
+  "size_mb": 2095.834228515625,
+  "peak_vram_gb": 1.1079330444335938,
+  "time": 2860.3771283626556,
+  "args": {
+    "mode": "naive",
+    "samples": 200,
+    "selection_method": "knapsack",
+    "sensitivity_method": "perturbation",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 32,
+    "budget_mb": 4096,
+    "percentile": 0.05,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95
+  }
+}
