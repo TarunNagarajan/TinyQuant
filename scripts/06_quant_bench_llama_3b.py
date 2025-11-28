@@ -79,6 +79,10 @@ def main():
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
     parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_128.json")
     parser.add_argument("--samples", type=int, default=200)
+    parser.add_argument("--quant_method", type=str, default="pct", choices=["pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--quant_percentile", type=float, default=0.20)
+    parser.add_argument("--quant_sensitivity_ratio", type=float, default=0.05)
+    parser.add_argument("--quant_budget", type=float, default=0.95)
     args = parser.parse_args()
 
     Config.set_model("llama_3b")
@@ -114,7 +118,13 @@ def main():
         ).eval()
         with open(map_path, "r") as f: sensitivity_map = json.load(f)
         quantizer = SelectiveQuantizer(model, sensitivity_map)
-        model = quantizer.quantize(method="kmeans", verbose=True)
+        model = quantizer.quantize(
+            method=args.quant_method,
+            percentile=args.quant_percentile,
+            sensitivity_ratio=args.quant_sensitivity_ratio,
+            budget=args.quant_budget,
+            verbose=True
+        )
 
     model_size = get_model_size_mb(model)
     print(f"Model Size: {model_size:.2f} MB")
