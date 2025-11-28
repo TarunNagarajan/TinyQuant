@@ -77,7 +77,7 @@ def extract_gold_answer(answer_text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
-    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_128.json")
+    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_mean.json")
     parser.add_argument("--samples", type=int, default=200)
     parser.add_argument("--quant_method", type=str, default="pct", choices=["pct", "otsu", "elb", "gradient", "cumulative"])
     parser.add_argument("--quant_percentile", type=float, default=0.20)
