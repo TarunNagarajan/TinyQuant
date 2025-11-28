@@ -76,8 +76,13 @@ class SelectiveQuantizer:
 
     def _replace_linear_with_bnb(self, full_name, og_layer):
         # physically replace torch.nn.Linear with bnb.nn.Linear4bit
-        parent_name, child_name = full_name.rsplit(".", 1)
-        parent = self.model.get_submodule(parent_name)
+        if "." in full_name:
+            parent_name, child_name = full_name.rsplit(".", 1)
+            parent = self.model.get_submodule(parent_name)
+        else:
+            # This handles top-level layers like 'lm_head'
+            parent = self.model
+            child_name = full_name
 
         new_layer = bnb.nn.Linear4bit(
             input_features = og_layer.in_features,
