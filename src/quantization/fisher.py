@@ -10,7 +10,7 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
     sensitivity_map = {}
     raw_samples = get_calibration_data(dsname, n_samples=n_samples)
 
-    print(f"[{dsname}] [COMPUTING FISHER INFO]")
+    print(f"[{dsname}] [COMPUTING FISHER INFO - DENSITY CORRECTED]")
 
     processed = 0
     for i, text in enumerate(tqdm(raw_samples, desc="Computing Fisher", leave=False, total=len(raw_samples))):
@@ -26,26 +26,21 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None):
         model.zero_grad()
         outputs = model(**inputs, labels=inputs["input_ids"])
 
-        if "labels" in inputs and inputs["labels"] is not None:
-            active_token_count = int((inputs["labels"] != -100).sum().item())
-        else:
-            active_token_count = int(inputs["input_ids"].numel())
-
         loss = outputs.loss
         loss.backward()
 
         with torch.no_grad():
             for name, param in model.named_parameters():
                 if param.grad is not None and "weight" in name:
-                    # Calculate sum of squares
+                    # 1. Calculate Sum of Squared Gradients (Raw Sensitivity)
                     grad_sq = param.grad.detach().cpu().float().square().sum().item()
                     
-                    # Normalize by the number of elements (parameters) in the layer
-                    # This prevents large layers from dominating simply due to size
-                    param_count = param.numel() 
-                    normalized_score = grad_sq / param_count
+                    # 2. CRITICAL FIX: Normalize by parameter count
+                    # This computes "Sensitivity per Parameter" (Value Density)
+                    # identifying small but critical layers (like LayerNorms/Attention)
+                    density_score = grad_sq / param.numel()
                     
-                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + normalized_score
+                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + density_score
 
         model.zero_grad()
         del inputs, outputs, loss

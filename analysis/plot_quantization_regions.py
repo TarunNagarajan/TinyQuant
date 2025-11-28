@@ -10,8 +10,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.config import Config
 from src.quantization.quantizer import SelectiveQuantizer
 
-def plot_quantization_regions(model_name):
-    sensitivity_map_file = os.path.join(Config.MAPS_DIR, 'fisher_gsm8k_mean.json')
+def plot_quantization_regions(model_name, map_filename):
+    sensitivity_map_file = os.path.join(Config.MAPS_DIR, map_filename)
     print(f"Generating quantization region plot for {model_name} using {sensitivity_map_file}...")
 
     try:
@@ -76,12 +76,13 @@ def plot_quantization_regions(model_name):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Plot quantization regions based on the default Fisher sensitivity map.")
+    parser = argparse.ArgumentParser(description="Plot quantization regions based on a given sensitivity map.")
     parser.add_argument("--model_name", type=str, required=True, help="Name of the model for which to plot quantization regions.")
+    parser.add_argument("--map_file", type=str, default='fisher_gsm8k_mean.json', help="Name of the sensitivity map JSON file inside the model's map directory.")
     
     args = parser.parse_args()
 
     # Set model config to ensure paths are correct
     Config.set_model(args.model_name)
     
-    plot_quantization_regions(args.model_name)
+    plot_quantization_regions(args.model_name, args.map_file)

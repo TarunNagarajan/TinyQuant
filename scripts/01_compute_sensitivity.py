@@ -67,7 +67,7 @@ def main():
         filename = f"fisher_{args.dataset}_{args.reduction}.json"
     else:
         scores = compute_magnitude(model)
-        filename = f"magnitude_{args.dataset}.json"
+        filename = "magnitude.json"
 
     output_path = os.path.join(Config.MAPS_DIR, filename)
     print(f"[SAVING]")

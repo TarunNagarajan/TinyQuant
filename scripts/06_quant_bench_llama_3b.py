@@ -89,9 +89,15 @@ def main():
     
     map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
 
-    CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_checkpoint.jsonl")
-    OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}.jsonl")
-    SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_summary.json")
+    # Construct file paths for logging
+    if args.mode == "selective":
+        log_suffix = f"{args.mode}_{args.quant_method}"
+    else:
+        log_suffix = args.mode
+
+    CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_checkpoint.jsonl")
+    OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}.jsonl")
+    SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_summary.json")
 
     print(f"Running Llama 3B Benchmark | Mode: {args.mode}")
 

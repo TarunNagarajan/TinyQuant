@@ -61,21 +61,30 @@ def extract_gold_answer(answer_text):
     return normalize_numeric_answer(gold)
 
 def main():
-    parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
     parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_128.json")
     parser.add_argument("--samples", type=int, default=500)
+    parser.add_argument("--quant_method", type=str, default="pct", choices=["pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--quant_percentile", type=float, default=0.20)
+    parser.add_argument("--quant_sensitivity_ratio", type=float, default=0.05)
+    parser.add_argument("--quant_budget", type=float, default=0.95)
     args = parser.parse_args()
 
-    Config.set_model("qwen_3b") # Still using "llama" as the key, but it maps to Qwen2.5 3B
+    Config.set_model("qwen_3b")
     
     map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
 
     CHECKPOINT_INTERVAL = 50
 
-    CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_checkpoint.jsonl")
-    OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}.jsonl")
-    SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{args.mode}_summary.json")
+    # Construct file paths for logging
+    if args.mode == "selective":
+        log_suffix = f"{args.mode}_{args.quant_method}"
+    else:
+        log_suffix = args.mode
+
+    CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_checkpoint.jsonl")
+    OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}.jsonl")
+    SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_summary.json")
 
     print(f"Running Qwen2.5-3B Benchmark | Mode: {args.mode}")
 
@@ -102,7 +111,13 @@ def main():
         ).eval()
         with open(map_path, "r") as f: sensitivity_map = json.load(f)
         quantizer = SelectiveQuantizer(model, sensitivity_map)
-        model = quantizer.quantize(method="kmeans", verbose=True)
+        model = quantizer.quantize(
+            method=args.quant_method,
+            percentile=args.quant_percentile,
+            sensitivity_ratio=args.quant_sensitivity_ratio,
+            budget=args.quant_budget,
+            verbose=True
+        )
 
     model_size = get_model_size_mb(model)
     print(f"Model Size: {model_size:.2f} MB")
@@ -144,7 +159,7 @@ def main():
 
         results.append({"question": question, "gold": gold_ans, "predicted": pred_ans, "correct": is_correct})
 
-        if (idx + 1) % 20 == 0:
+        if (idx + 1) % CHECKPOINT_INTERVAL == 0:
             with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
                 for r in results: json.dump(r, f); f.write("\n")
 
