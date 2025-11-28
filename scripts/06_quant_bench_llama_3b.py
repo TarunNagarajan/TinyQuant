@@ -77,21 +77,27 @@ def extract_gold_answer(answer_text):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
-    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_mean.json")
     parser.add_argument("--samples", type=int, default=200)
-    parser.add_argument("--quant_method", type=str, default="pct", choices=["pct", "otsu", "elb", "gradient", "cumulative"])
-    parser.add_argument("--quant_percentile", type=float, default=0.20)
-    parser.add_argument("--quant_sensitivity_ratio", type=float, default=0.05)
-    parser.add_argument("--quant_budget", type=float, default=0.95)
+    # Arguments for selective quantization
+    parser.add_argument("--selection_method", type=str, default="knapsack", choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--sensitivity_method", type=str, default="perturbation", choices=["perturbation", "fisher", "magnitude"])
+    parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
+    parser.add_argument("--sensitivity_samples", type=int, default=32)
+    parser.add_argument("--budget_mb", type=int, default=4096)
+    parser.add_argument("--percentile", type=float, default=0.05)
+    parser.add_argument("--sensitivity_ratio", type=float, default=0.05)
+    parser.add_argument("--budget", type=float, default=0.95)
+
+
     args = parser.parse_args()
 
     Config.set_model("llama_3b")
-    
-    map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
 
     # Construct file paths for logging
     if args.mode == "selective":
-        log_suffix = f"{args.mode}_{args.quant_method}"
+        log_suffix = f"{args.mode}_{args.selection_method}_{args.sensitivity_method}"
+        if args.selection_method == "pct":
+            log_suffix += f"_{int(args.percentile*100)}"
     else:
         log_suffix = args.mode
 
@@ -112,23 +118,32 @@ def main():
             Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
         ).eval()
     elif args.mode == "naive":
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,            bnb_4bit_compute_dtype=Config.DTYPE, bnb_4bit_quant_type="nf4"
-        )
+        # To perform naive quantization, we can use the selective quantizer with a percentile of 1.0, which quantizes all layers.
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, quantization_config=bnb_config, device_map="auto"
+            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
         ).eval()
+        quantizer = SelectiveQuantizer(model, tokenizer)
+        # We need a sensitivity map for the quantizer, but for naive it doesn't matter, so we compute a cheap one.
+        quantizer.compute_sensitivity("magnitude", "gsm8k", 1)
+        model = quantizer.quantize(
+            selection_method="pct",
+            percentile=1.0, # Quantize 100% of layers
+            verbose=True
+        )
     elif args.mode == "selective":
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
         ).eval()
-        with open(map_path, "r") as f: sensitivity_map = json.load(f)
-        quantizer = SelectiveQuantizer(model, sensitivity_map)
+        quantizer = SelectiveQuantizer(model, tokenizer)
         model = quantizer.quantize(
-            method=args.quant_method,
-            percentile=args.quant_percentile,
-            sensitivity_ratio=args.quant_sensitivity_ratio,
-            budget=args.quant_budget,
+            selection_method=args.selection_method,
+            sensitivity_method=args.sensitivity_method,
+            dsname=args.sensitivity_dataset,
+            n_samples=args.sensitivity_samples,
+            budget_mb=args.budget_mb,
+            percentile=args.percentile,
+            sensitivity_ratio=args.sensitivity_ratio,
+            budget=args.budget,
             verbose=True
         )
 
@@ -182,7 +197,8 @@ def main():
     with open(SUMMARY_FILE, "w") as f:
         json.dump({
             "mode": args.mode, "accuracy": accuracy, "size_mb": model_size,
-            "peak_vram_gb": peak_vram, "time": end_time - start_time
+            "peak_vram_gb": peak_vram, "time": end_time - start_time,
+            "args": vars(args)
         }, f, indent=2)
 
 if __name__ == "__main__":

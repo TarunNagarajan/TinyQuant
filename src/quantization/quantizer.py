@@ -5,10 +5,26 @@ import numpy as np
 from kneed import KneeLocator
 from skimage.filters import threshold_otsu
 
+from src.sensitivity.fisher import compute_fisher
+from src.sensitivity.magnitude import compute_magnitude
+from src.sensitivity.perturbation import compute_perturbation_sensitivity
+from src.selection.knapsack import knapsack_solver
+
 class SelectiveQuantizer:
-    def __init__(self, model, sensitivity_map):
+    def __init__(self, model, tokenizer):
         self.model = model
-        self.map = sensitivity_map
+        self.tokenizer = tokenizer
+        self.sensitivity_map = None
+
+    def compute_sensitivity(self, method, dsname, n_samples, reduction="mean"):
+        if method == "fisher":
+            self.sensitivity_map = compute_fisher(self.model, self.tokenizer, dsname, reduction=reduction, n_samples=n_samples)
+        elif method == "magnitude":
+            self.sensitivity_map = compute_magnitude(self.model)
+        elif method == "perturbation":
+            self.sensitivity_map = compute_perturbation_sensitivity(self.model, self.tokenizer, dsname, n_samples=n_samples)
+        else:
+            raise ValueError(f"Unknown sensitivity method: {method}")
 
     @staticmethod
     def get_threshold_pct(sensitivity_map, percentile):
@@ -81,48 +97,54 @@ class SelectiveQuantizer:
 
         del og_layer
 
-    def quantize(self, method="otsu", percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
-        method = method.lower()
+    def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
         
-        if method == "pct":
-            threshold = SelectiveQuantizer.get_threshold_pct(self.map, percentile)
-        elif method == "otsu":
-            threshold = SelectiveQuantizer.get_threshold_otsu(self.map)
-        elif method == "elb":
-            threshold = SelectiveQuantizer.get_threshold_elb(self.map)
-        elif method == "gradient":
-            threshold = SelectiveQuantizer.find_optimal_threshold(self.map, sensitivity_ratio)
-        elif method == "cumulative":
-            threshold = SelectiveQuantizer.cumulative_budget_threshold(self.map, budget)
+        # 1. Compute sensitivity if not already computed
+        if self.sensitivity_map is None:
+            self.compute_sensitivity(sensitivity_method, dsname, n_samples)
+
+        selection_method = selection_method.lower()
+
+        if selection_method == "knapsack":
+            layers_to_keep = knapsack_solver(self.model, self.sensitivity_map, budget_mb)
         else:
-            raise ValueError(f"[UNKNOWN METHOD] [{method}]")
-
-        if verbose:
-            print(f"[COMPUTED THRESHOLD] [{method.upper()}]")
-
-        replaces = []
-        unchanged_count = 0
-        total_linear = 0
-        
-        for name, module in self.model.named_modules(): 
-            if isinstance(module, nn.Linear):
-                total_linear += 1 
-                param_key = f"{name}.weight"
-
-                if param_key in self.map:
-                    score = self.map[param_key]
-
-                    if score < threshold:
-                        replaces.append((name, module))
-                    
+            # Existing threshold-based methods
+            if selection_method == "pct":
+                threshold = SelectiveQuantizer.get_threshold_pct(self.sensitivity_map, percentile)
+            elif selection_method == "otsu":
+                threshold = SelectiveQuantizer.get_threshold_otsu(self.sensitivity_map)
+            elif selection_method == "elb":
+                threshold = SelectiveQuantizer.get_threshold_elb(self.sensitivity_map)
+            elif selection_method == "gradient":
+                threshold = SelectiveQuantizer.find_optimal_threshold(self.sensitivity_map, sensitivity_ratio)
+            elif selection_method == "cumulative":
+                threshold = SelectiveQuantizer.cumulative_budget_threshold(self.sensitivity_map, budget)
+            else:
+                raise ValueError(f"[UNKNOWN SELECTION METHOD] [{selection_method}]")
+            
+            if verbose:
+                print(f"[COMPUTED THRESHOLD] [{selection_method.upper()}]")
+            
+            layers_to_keep = []
+            for name, module in self.model.named_modules():
+                if isinstance(module, nn.Linear):
+                    param_key = f"{name}.weight"
+                    if param_key in self.sensitivity_map:
+                        if self.sensitivity_map[param_key] >= threshold:
+                            layers_to_keep.append(name)
                     else:
-                        unchanged_count += 1 
+                        layers_to_keep.append(name) # Keep if no score
 
-                else:
-                    if verbose:
-                        print(f"[MISSING SCORE] [{name}]")
-
-                    unchanged_count += 1 
+        # Quantize layers that are not in the keep list
+        replaces = []
+        total_linear = 0
+        for name, module in self.model.named_modules():
+            if isinstance(module, nn.Linear):
+                total_linear += 1
+                if name not in layers_to_keep:
+                    replaces.append((name, module))
+        
+        unchanged_count = total_linear - len(replaces)
 
         if verbose:
             print(f"[QUANTIZING {len(replaces)} LAYERS TO INT4]")
@@ -137,7 +159,3 @@ class SelectiveQuantizer:
             print(f"[COMPRESSION RATIO (LAYERS): {len(replaces)/total_linear:.1%}]")
 
         return self.model
-
-
-
-

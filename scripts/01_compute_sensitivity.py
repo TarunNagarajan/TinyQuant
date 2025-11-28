@@ -7,8 +7,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from src.quantization.fisher import compute_fisher
-from src.quantization.magnitude import compute_magnitude
+from src.sensitivity.fisher import compute_fisher
+from src.sensitivity.magnitude import compute_magnitude
+from src.sensitivity.perturbation import compute_perturbation_sensitivity
 from src.config import Config
 
 def main():
@@ -23,7 +24,7 @@ def main():
     parser.add_argument(
         "--method",
         type=str,
-        choices=["fisher", "magnitude"],
+        choices=["fisher", "magnitude", "perturbation"],
         required=True
     )
     parser.add_argument(
@@ -65,9 +66,14 @@ def main():
     if args.method == "fisher":
         scores = compute_fisher(model, tokenizer, args.dataset, reduction=args.reduction, n_samples=args.n_samples)
         filename = f"fisher_{args.dataset}_{args.reduction}.json"
-    else:
+    elif args.method == "magnitude":
         scores = compute_magnitude(model)
-        filename = "magnitude.json"
+        filename = f"magnitude_{args.dataset}.json"
+    elif args.method == "perturbation":
+        scores = compute_perturbation_sensitivity(model, tokenizer, args.dataset, n_samples=args.n_samples)
+        filename = f"perturbation_{args.dataset}.json"
+    else:
+        raise ValueError(f"Unknown method: {args.method}")
 
     output_path = os.path.join(Config.MAPS_DIR, filename)
     print(f"[SAVING]")
