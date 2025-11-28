@@ -1,0 +1,21 @@
+SENSITIVITY ANALYSIS SUMMARY
+========================================
+
+Top 10 Most Sensitive Layers:
+ 1. model.layers.29.input_layernorm: Fisher Mean = 60.723827
+ 2. lm_head: Fisher Mean = 51.873189
+ 3. model.layers.29.self_attn.k_proj: Fisher Mean = 33.229419
+ 4. model.layers.0.self_attn.v_proj: Fisher Mean = 21.431171
+ 5. model.layers.26.input_layernorm: Fisher Mean = 20.111541
+ 6. model.layers.31.mlp.fc1: Fisher Mean = 17.085750
+ 7. model.layers.30.input_layernorm: Fisher Mean = 16.025037
+ 8. model.layers.30.mlp.fc1: Fisher Mean = 13.851344
+ 9. model.layers.2.self_attn.v_proj: Fisher Mean = 12.079969
+10. model.embed_tokens: Fisher Mean = 11.359272
+
+Module Type Statistics:
+embedding: Mean Fisher = 11.359272, Max Fisher = 11.359272, Count = 1
+attention: Mean Fisher = 2.221944, Max Fisher = 33.229419, Count = 128
+mlp: Mean Fisher = 4.652615, Max Fisher = 17.085750, Count = 64
+layernorm: Mean Fisher = 3.324094, Max Fisher = 60.723827, Count = 33
+other: Mean Fisher = 51.873189, Max Fisher = 51.873189, Count = 1

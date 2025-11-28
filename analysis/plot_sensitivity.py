@@ -7,6 +7,7 @@ import numpy as np
 
 # Ensure the script can find the src module
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from src.config import Config
 
 def normalize_scores(scores_dict):
     """Normalizes scores in a dictionary to the [0, 1] range."""
@@ -16,72 +17,92 @@ def normalize_scores(scores_dict):
     min_val = np.min(values)
     max_val = np.max(values)
     if max_val == min_val:
-        return {k: 0.5 for k in scores_dict} # Or 0, or 1, depending on desired behavior
+        return {k: 0.5 for k in scores_dict}
     
     normalized_scores = {k: (v - min_val) / (max_val - min_val) for k, v in scores_dict.items()}
     return normalized_scores
 
-def plot_sensitivity_distribution(fisher_map_file, magnitude_map_file):
+def plot_sensitivity_comparison(model_name, metric):
     """
-    Loads Fisher and Magnitude sensitivity maps from JSON files, generates a
-    comparative plot of their normalized distributions, and saves it as a PNG image.
-    It also prints the top and bottom 5 most sensitive layers for each metric.
+    Loads two sensitivity maps for a given metric (from gsm8k and math datasets),
+    generates a comparative plot, and prints top/bottom layers for each.
     """
-    with open(fisher_map_file, 'r') as f:
-        fisher_map = json.load(f)
-    with open(magnitude_map_file, 'r') as f:
-        magnitude_map = json.load(f)
+    Config.set_model(model_name)
+    
+    # Construct file paths based on convention
+    if metric == 'fisher':
+        file1 = os.path.join(Config.MAPS_DIR, 'fisher_gsm8k_mean.json')
+        file2 = os.path.join(Config.MAPS_DIR, 'fisher_math_mean.json')
+        dataset1, dataset2 = 'gsm8k', 'math'
+    elif metric == 'magnitude':
+        file1 = os.path.join(Config.MAPS_DIR, 'magnitude_gsm8k.json')
+        file2 = os.path.join(Config.MAPS_DIR, 'magnitude_math.json')
+        dataset1, dataset2 = 'gsm8k', 'math'
+    else:
+        print(f"Error: Invalid metric '{metric}'. Choose 'fisher' or 'magnitude'.")
+        return
+
+    print(f"Loading {file1} and {file2}...")
+
+    try:
+        with open(file1, 'r') as f:
+            map1 = json.load(f)
+        with open(file2, 'r') as f:
+            map2 = json.load(f)
+    except FileNotFoundError as e:
+        print(f"Error: Could not find sensitivity map file. {e}")
+        return
 
     # Normalize scores for plotting
-    normalized_fisher = normalize_scores(fisher_map)
-    normalized_magnitude = normalize_scores(magnitude_map)
+    normalized_map1 = normalize_scores(map1)
+    normalized_map2 = normalize_scores(map2)
 
     # Sort the normalized scores for plotting the distribution
-    fisher_scores_sorted = sorted(normalized_fisher.values(), reverse=True)
-    magnitude_scores_sorted = sorted(normalized_magnitude.values(), reverse=True)
+    scores1_sorted = sorted(normalized_map1.values(), reverse=True)
+    scores2_sorted = sorted(normalized_map2.values(), reverse=True)
     
     plt.figure(figsize=(12, 7))
-    plt.plot(fisher_scores_sorted, label='Fisher (Normalized)', color='blue', alpha=0.8)
-    plt.plot(magnitude_scores_sorted, label='Magnitude (Normalized)', color='red', alpha=0.8)
+    plt.plot(scores1_sorted, label=f'{metric.capitalize()} ({dataset1})', color='blue', alpha=0.8)
+    plt.plot(scores2_sorted, label=f'{metric.capitalize()} ({dataset2})', color='red', alpha=0.8)
     
     plt.yscale('log')
     plt.xlabel('Parameter Rank (sorted)')
-    plt.ylabel('Normalized Score (log scale)')
-    plt.title('Fisher vs. Magnitude Sensitivity Distribution')
+    plt.ylabel(f'Normalized {metric.capitalize()} Score (log scale)')
+    plt.title(f'{metric.capitalize()} Sensitivity Distribution for {model_name}')
     plt.legend()
     plt.grid(True, which="both", ls="--", alpha=0.5)
     
     # Generate a descriptive output filename
-    base_name = os.path.basename(fisher_map_file).replace('fisher_', '').replace('.json', '')
-    output_filename = os.path.join(os.path.dirname(fisher_map_file), f'{base_name}_fisher_vs_magnitude.png')
+    output_dir = Config.MAPS_DIR
+    output_filename = os.path.join(output_dir, f'{model_name}_{metric}_{dataset1}_vs_{dataset2}.png')
     plt.savefig(output_filename)
     print(f"Plot saved to {output_filename}")
    
-    # Print top/bottom 5 for original Fisher scores
-    sorted_fisher = sorted(fisher_map.items(), key=lambda x: x[1], reverse=True)
-    print("\n--- Fisher Sensitivity ---")
+    # Print top/bottom 5 for the first map
+    sorted_map1 = sorted(map1.items(), key=lambda x: x[1], reverse=True)
+    print(f"\n--- {metric.capitalize()} Sensitivity ({dataset1}) ---")
     print("Top 5 sensitive layers:")
-    for name, score in sorted_fisher[:5]:
+    for name, score in sorted_map1[:5]:
         print(f"  {name}: {score:.2e}")
     print("\nBottom 5 sensitive layers:")
-    for name, score in sorted_fisher[-5:]:
+    for name, score in sorted_map1[-5:]:
         print(f"  {name}: {score:.2e}")
 
-    # Print top/bottom 5 for original Magnitude scores
-    sorted_magnitude = sorted(magnitude_map.items(), key=lambda x: x[1], reverse=True)
-    print("\n--- Magnitude Sensitivity ---")
+    # Print top/bottom 5 for the second map
+    sorted_map2 = sorted(map2.items(), key=lambda x: x[1], reverse=True)
+    print(f"\n--- {metric.capitalize()} Sensitivity ({dataset2}) ---")
     print("Top 5 sensitive layers:")
-    for name, score in sorted_magnitude[:5]:
+    for name, score in sorted_map2[:5]:
         print(f"  {name}: {score:.2e}")
     print("\nBottom 5 sensitive layers:")
-    for name, score in sorted_magnitude[-5:]:
+    for name, score in sorted_map2[-5:]:
         print(f"  {name}: {score:.2e}")
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Plot and compare Fisher and Magnitude sensitivity distributions from JSON maps.")
-    parser.add_argument("fisher_map_file", type=str, help="Path to the Fisher sensitivity map JSON file.")
-    parser.add_argument("magnitude_map_file", type=str, help="Path to the Magnitude sensitivity map JSON file.")
+    parser = argparse.ArgumentParser(description="Compare sensitivity distributions for gsm8k and math datasets.")
+    parser.add_argument("--model_name", type=str, required=True, help="Name of the model to plot (e.g., 'llama_3b').")
+    parser.add_argument("--metric", type=str, required=True, choices=['fisher', 'magnitude'], help="The sensitivity metric to plot.")
     args = parser.parse_args()
     
-    plot_sensitivity_distribution(args.fisher_map_file, args.magnitude_map_file)
+    plot_sensitivity_comparison(args.model_name, args.metric)
