@@ -68,7 +68,7 @@ def plot_sensitivity_comparison(model_name, metric):
     plt.yscale('log')
     plt.xlabel('Parameter Rank (sorted)')
     plt.ylabel(f'Normalized {metric.capitalize()} Score (log scale)')
-    plt.title(f'{metric.capitalize()} Sensitivity Distribution for {model_name}')
+    plt.title(f'{metric.capitalize()} Sensitivity Distribution for\n{Config.MODEL_ID}')
     plt.legend()
     plt.grid(True, which="both", ls="--", alpha=0.5)
     

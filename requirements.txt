@@ -12,3 +12,6 @@ numpy>=1.26.0
 matplotlib>=3.9.0
 sentencepiece>=0.2.0
 protobuf>=5.27.0
+scikit-learn>=1.5.1
+kneed>=0.8.5
+scikit-image>=0.24.0
