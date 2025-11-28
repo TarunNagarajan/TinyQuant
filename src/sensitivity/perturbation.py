@@ -84,6 +84,7 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
             inp = layer_inputs[name]
             
             with torch.no_grad():
+                inp = inp.to(module.weight.device)
                 # 1. Ground Truth Output (FP16/BF16)
                 # We re-compute this locally to ensure we compare against the exact same input
                 out_gt = module(inp)

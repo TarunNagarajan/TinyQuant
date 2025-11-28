@@ -97,7 +97,9 @@ def main():
     if args.mode == "selective":
         log_suffix = f"{args.mode}_{args.selection_method}_{args.sensitivity_method}"
         if args.selection_method == "pct":
-            log_suffix += f"_{int(args.percentile*100)}"
+            log_suffix += f"_pct{int(args.percentile*100)}"
+        elif args.selection_method == "knapsack":
+            log_suffix += f"_budget{args.budget_mb}"
     else:
         log_suffix = args.mode
 
@@ -118,18 +120,14 @@ def main():
             Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
         ).eval()
     elif args.mode == "naive":
-        # To perform naive quantization, we can use the selective quantizer with a percentile of 1.0, which quantizes all layers.
-        model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
-        ).eval()
-        quantizer = SelectiveQuantizer(model, tokenizer)
-        # We need a sensitivity map for the quantizer, but for naive it doesn't matter, so we compute a cheap one.
-        quantizer.compute_sensitivity("magnitude", "gsm8k", 1)
-        model = quantizer.quantize(
-            selection_method="pct",
-            percentile=1.0, # Quantize 100% of layers
-            verbose=True
+        bnb_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=Config.DTYPE,
+            bnb_4bit_quant_type="nf4"
         )
+        model = AutoModelForCausalLM.from_pretrained(
+            Config.MODEL_ID, quantization_config=bnb_config, device_map="auto"
+        ).eval()
     elif args.mode == "selective":
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
