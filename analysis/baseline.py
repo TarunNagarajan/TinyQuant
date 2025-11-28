@@ -125,7 +125,7 @@ def run_baseline_evaluation(model_name, eval_type="both", gsm8k_samples=100, wik
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_ID,
         torch_dtype=Config.DTYPE,
-        device_map=Config.DEVICE
+        device_map="auto"
     )
     
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)

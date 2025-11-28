@@ -59,7 +59,7 @@ def main():
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_ID,
         torch_dtype=Config.DTYPE,
-        device_map=Config.DEVICE
+        device_map="auto"
     )
 
     if args.method == "fisher":

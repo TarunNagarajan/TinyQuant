@@ -97,18 +97,18 @@ def main():
 
     if args.mode == "baseline":
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
+            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE, trust_remote_code=True
         ).eval()
     elif args.mode == "naive":
         bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16, bnb_4bit_quant_type="nf4"
+            load_in_4bit=True, bnb_4bit_compute_dtype=Config.DTYPE, bnb_4bit_quant_type="nf4"
         )
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID, quantization_config=bnb_config, device_map="auto", trust_remote_code=True
         ).eval()
     elif args.mode == "selective":
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=torch.bfloat16, trust_remote_code=True
+            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE, trust_remote_code=True
         ).eval()
         with open(map_path, "r") as f: sensitivity_map = json.load(f)
         quantizer = SelectiveQuantizer(model, sensitivity_map)

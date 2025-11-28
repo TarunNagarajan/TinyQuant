@@ -21,7 +21,7 @@ def run_layerwise_sensitivity_analysis(model_name, datasets, sample_counts):
     model = AutoModelForCausalLM.from_pretrained(
         Config.MODEL_ID,
         torch_dtype=Config.DTYPE,
-        device_map=Config.DEVICE
+        device_map="auto"
     )
 
     results_summary = []
