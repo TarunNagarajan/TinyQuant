@@ -87,7 +87,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID,
             device_map="auto",
-            torch_dtype=torch.bfloat16
+            torch_dtype=Config.DTYPE
         ).eval()
 
     elif args.mode == "naive":
@@ -106,7 +106,7 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID,
             device_map="auto",
-            torch_dtype=torch.bfloat16
+            torch_dtype=Config.DTYPE
         ).eval()
         
         with open(map_path, "r") as f:
