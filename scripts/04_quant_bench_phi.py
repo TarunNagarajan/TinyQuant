@@ -14,7 +14,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.quantization.quantizer import SelectiveQuantizer
 from src.config import Config
 
-# --- 8-SHOT COT EXAMPLES (Same as Llama, tailored format) ---
+# --- 8-SHOT COT EXAMPLES ---
 COT_EXAMPLES = """Question: There are 15 trees in the grove. Grove workers will plant trees in the grove today. After they are done, there will be 21 trees. How many trees did the grove workers plant today?
 Answer: There are 15 trees originally. Then there were 21 trees after planting. So the number of trees planted is 21 - 15 = 6. The answer is 6.
 
@@ -59,9 +59,7 @@ def normalize_numeric_answer(answer):
         return answer
 
 def extract_answer(text):
-    # Phi-2 will generate: "Answer: [Step by step] The answer is X."
-    # We look for the final number.
-    text = text.split("Output:")[-1] # Phi-specific separator
+    # Phi-2 generates raw completion, extract last number
     nums = re.findall(r"-?\d+\.?\d*", text)
     if nums:
         return normalize_numeric_answer(nums[-1])
@@ -69,36 +67,38 @@ def extract_answer(text):
 
 def extract_gold_answer(answer_text):
     parts = answer_text.strip().split("####")
-    if len(parts) >= 2: gold = parts[-1].strip()
-    else: nums = re.findall(r"-?\d+\.?\d*", answer_text); gold = nums[-1] if nums else ""
+    if len(parts) >= 2: 
+        gold = parts[-1].strip()
+    else: 
+        nums = re.findall(r"-?\d+\.?\d*", answer_text)
+        gold = nums[-1] if nums else ""
     return normalize_numeric_answer(gold)
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
-    parser.add_argument("--map_filename", type=str, default="fisher_gsm8k_mean.json")
     parser.add_argument("--samples", type=int, default=200)
-    parser.add_argument("--quant_method", type=str, default="pct", choices=["pct", "otsu", "elb", "gradient", "cumulative"])
-    parser.add_argument("--quant_percentile", type=float, default=0.20)
-    parser.add_argument("--quant_sensitivity_ratio", type=float, default=0.05)
-    parser.add_argument("--quant_budget", type=float, default=0.95)
-    parser.add_argument("--fisher_clip_percentile", type=float, default=99.0,
-                        help="Percentile for Fisher gradient clipping")
-    parser.add_argument("--fisher_clip_samples", type=int, default=32,
-                        help="Samples for Fisher clip threshold estimation")
-    args = parser.parse_args()
+    # Arguments for selective quantization
+    parser.add_argument("--selection_method", type=str, default="pct", choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--sensitivity_method", type=str, default="perturbation", choices=["perturbation", "fisher", "magnitude"])
+    parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
+    parser.add_argument("--sensitivity_samples", type=int, default=64)
+    parser.add_argument("--budget_mb", type=int, default=4096)
+    parser.add_argument("--percentile", type=float, default=0.15)
+    parser.add_argument("--sensitivity_ratio", type=float, default=0.05)
+    parser.add_argument("--budget", type=float, default=0.95)
 
-    # Security: Validate filename to prevent path traversal
-    if '..' in args.map_filename or args.map_filename.startswith('/'):
-        raise ValueError("Invalid filename provided")
+    args = parser.parse_args()
 
     Config.set_model("phi")
 
-    map_path = os.path.join(Config.MAPS_DIR, args.map_filename)
-
     # Construct file paths for logging
     if args.mode == "selective":
-        log_suffix = f"{args.mode}_{args.quant_method}"
+        log_suffix = f"{args.mode}_{args.selection_method}_{args.sensitivity_method}"
+        if args.selection_method == "pct":
+            log_suffix += f"_pct{int(args.percentile*100)}"
+        elif args.selection_method == "knapsack":
+            log_suffix += f"_budget{args.budget_mb}"
     else:
         log_suffix = args.mode
 
@@ -112,36 +112,59 @@ def main():
     dataset = dataset.select(range(min(args.samples, len(dataset))))
 
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID, trust_remote_code=True)
-    if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None: 
+        tokenizer.pad_token = tokenizer.eos_token
 
     if args.mode == "baseline":
+        print("[LOADING] Baseline FP16 model")
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE, trust_remote_code=True
+            Config.MODEL_ID, 
+            device_map="auto", 
+            torch_dtype=torch.float16, 
+            trust_remote_code=True
         ).eval()
+        
     elif args.mode == "naive":
+        print("[LOADING] Naive INT4 quantized model")
         bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_compute_dtype=Config.DTYPE, bnb_4bit_quant_type="nf4"
+            load_in_4bit=True, 
+            bnb_4bit_compute_dtype=torch.float16, 
+            bnb_4bit_quant_type="nf4"
         )
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, quantization_config=bnb_config, device_map="auto", trust_remote_code=True
+            Config.MODEL_ID, 
+            quantization_config=bnb_config, 
+            device_map="auto", 
+            trust_remote_code=True
         ).eval()
+        
     elif args.mode == "selective":
+        print("[LOADING] Model for selective quantization")
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE, trust_remote_code=True
+            Config.MODEL_ID, 
+            device_map="auto", 
+            torch_dtype=torch.float16, 
+            trust_remote_code=True
         ).eval()
-        with open(map_path, "r") as f: sensitivity_map = json.load(f)
+        
+        # CRITICAL: No dtype conversion after loading
+        print("[QUANTIZING] Starting selective quantization")
         quantizer = SelectiveQuantizer(model, tokenizer)
-        # Set the sensitivity map directly
-        quantizer.sensitivity_map = sensitivity_map
         model = quantizer.quantize(
-            selection_method=args.quant_method,
-            percentile=args.quant_percentile,
-            sensitivity_ratio=args.quant_sensitivity_ratio,
-            budget=args.quant_budget,
-            fisher_clip_percentile=args.fisher_clip_percentile,
-            fisher_clip_samples=args.fisher_clip_samples,
+            selection_method=args.selection_method,
+            sensitivity_method=args.sensitivity_method,
+            dsname=args.sensitivity_dataset,
+            n_samples=args.sensitivity_samples,
+            budget_mb=args.budget_mb,
+            percentile=args.percentile,
+            sensitivity_ratio=args.sensitivity_ratio,
+            budget=args.budget,
             verbose=True
         )
+
+    # CRITICAL: Get actual device after quantization
+    model_device = next(model.parameters()).device
+    print(f"Model is on device: {model_device}")
 
     model_size = get_model_size_mb(model)
     print(f"Model Size: {model_size:.2f} MB")
@@ -159,11 +182,15 @@ def main():
         # Construct Prompt for Phi-2 (Raw completion format)
         prompt_text = f"Solve the following math problems step by step. Show your reasoning clearly.\n\n{COT_EXAMPLES}\n\nQuestion: {question}\nAnswer:"
         
-        inputs = tokenizer(prompt_text, return_tensors="pt").to(Config.DEVICE)
+        # CRITICAL: Send to model_device, not Config.DEVICE
+        inputs = tokenizer(prompt_text, return_tensors="pt").to(model_device)
 
         with torch.no_grad():
             output_ids = model.generate(
-                **inputs, max_new_tokens=256, do_sample=False, pad_token_id=tokenizer.eos_token_id
+                **inputs, 
+                max_new_tokens=256, 
+                do_sample=False, 
+                pad_token_id=tokenizer.eos_token_id
             )
 
         # Decode only the NEW tokens
@@ -173,24 +200,41 @@ def main():
         pred_ans = extract_answer(response)
         gold_ans = extract_gold_answer(ex["answer"])
         is_correct = (pred_ans == gold_ans) and (pred_ans != "")
-        if is_correct: correct += 1
+        if is_correct: 
+            correct += 1
 
-        results.append({"question": question, "gold": gold_ans, "predicted": pred_ans, "correct": is_correct})
+        results.append({
+            "question": question, 
+            "gold": gold_ans, 
+            "predicted": pred_ans, 
+            "correct": is_correct
+        })
 
         if (idx + 1) % 20 == 0:
             with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
-                for r in results: json.dump(r, f); f.write("\n")
+                for r in results: 
+                    json.dump(r, f)
+                    f.write("\n")
 
     end_time = time.time()
     peak_vram = torch.cuda.max_memory_allocated() / 1024**3
     accuracy = correct / len(dataset)
 
-    print(f"Phi-2 {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+    print(f"\nPhi-2 {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        for r in results:
+            json.dump(r, f, ensure_ascii=False)
+            f.write("\n")
 
     with open(SUMMARY_FILE, "w") as f:
         json.dump({
-            "mode": args.mode, "accuracy": accuracy, "size_mb": model_size,
-            "peak_vram_gb": peak_vram, "time": end_time - start_time
+            "mode": args.mode, 
+            "accuracy": accuracy, 
+            "size_mb": model_size,
+            "peak_vram_gb": peak_vram, 
+            "time": end_time - start_time,
+            "args": vars(args)
         }, f, indent=2)
 
 if __name__ == "__main__":
