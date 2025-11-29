@@ -2,6 +2,9 @@ import torch
 import torch.nn as nn
 import bitsandbytes as bnb
 from bitsandbytes.nn import Params4bit
+import numpy as np
+from kneed import KneeLocator
+from skimage.filters import threshold_otsu
 
 from src.sensitivity.fisher import compute_fisher
 from src.sensitivity.magnitude import compute_magnitude
