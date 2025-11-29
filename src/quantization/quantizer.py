@@ -87,11 +87,11 @@ class SelectiveQuantizer:
             parent = self.model
             child_name = full_name
 
-        # 2. Create Linear4bit (Match the target_dtype)
+        # 2. Create Linear4bit (Use the same dtype as the original layer to ensure compatibility)
         new_layer = bnb.nn.Linear4bit(
             input_features=og_layer.in_features,
             output_features=og_layer.out_features,
-            compute_dtype=target_dtype,  # <--- Strictly match model dtype
+            compute_dtype=target_dtype,  # Use the same dtype as original layer
             bias=og_layer.bias is not None,
             quant_type="nf4",
         )
@@ -106,7 +106,7 @@ class SelectiveQuantizer:
 
         # 4. Handle Bias (CRITICAL: Enforce Dtype match)
         if og_layer.bias is not None:
-            # Force bias to match the target dtype (e.g., float16)
+            # Force bias to match the target dtype from original layer
             bias_data = og_layer.bias.data.to(dtype=target_dtype).cpu().clone()
             new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
 
