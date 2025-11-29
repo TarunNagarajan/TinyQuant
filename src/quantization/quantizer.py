@@ -236,19 +236,20 @@ class SelectiveQuantizer:
 
             # CRITICAL CHANGE: INVERTED SELECTION
             # Keep LOW sensitivity layers in FP16 instead of HIGH sensitivity
+            linear_layer_names = set()
+            for name, module in self.model.named_modules():
+                if isinstance(module, nn.Linear):
+                    linear_layer_names.add(name)
+
             if invert_selection:
-                if verbose:
-                    print("[INVERTED SELECTION] Keeping LOW sensitivity layers in FP16")
                 layers_to_keep = [
                     name for name, score in self.sensitivity_map.items() 
-                    if score <= threshold  # INVERTED: Keep LOW sensitivity in FP16
+                    if score <= threshold and name in linear_layer_names  # ADD THIS CHECK
                 ]
             else:
-                if verbose:
-                    print("[NORMAL SELECTION] Keeping HIGH sensitivity layers in FP16")
                 layers_to_keep = [
                     name for name, score in self.sensitivity_map.items() 
-                    if score >= threshold  # NORMAL: Keep HIGH sensitivity in FP16
+                    if score >= threshold and name in linear_layer_names  # ADD THIS CHECK
                 ]
 
         if verbose:
