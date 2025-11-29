@@ -111,7 +111,7 @@ class SelectiveQuantizer:
             new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
 
         # 5. Move to Device (Triggers Quantization)
-        new_layer = new_layer.to(target_device)
+        new_layer = new_layer.to(og_layer.weight.device)  # Use the original layer's specific device
 
         # 6. Swap
         setattr(parent, child_name, new_layer)
@@ -123,7 +123,7 @@ class SelectiveQuantizer:
         del og_layer
 
         # 8. Ensure the model is in the correct mode after replacement
-        new_layer = new_layer.to(target_device)
+        # (swap operation already places it on the right device)
 
         # 9. Safety Clear
         torch.cuda.empty_cache()
@@ -194,11 +194,15 @@ class SelectiveQuantizer:
         self.model.eval()
 
         # Perform a forward pass with a dummy input to verify the model is in a valid state
+        # Only try validation if the model has parameters (i.e., if it's been loaded properly)
         try:
             # Test that model still functions properly
-            dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=next(self.model.parameters()).device)
-            with torch.no_grad():
-                _ = self.model(dummy_input)
+            if len(list(self.model.parameters())) > 0:
+                # Create dummy input on the same device as the first parameter
+                first_param_device = next(self.model.parameters()).device
+                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=first_param_device)
+                with torch.no_grad():
+                    _ = self.model(dummy_input)
         except Exception as e:
             if verbose:
                 print(f"[WARNING] Model validation after quantization failed: {str(e)}")
