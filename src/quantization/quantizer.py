@@ -221,6 +221,13 @@ class SelectiveQuantizer:
 
         if verbose:
             print(f"[KEEPING {len(layers_to_keep)} LAYERS IN HIGH PRECISION]")
+            
+            # DEBUG: Show top sensitive layers and which are kept
+            print(f"\n[DEBUG] Top 20 most sensitive layers:")
+            sorted_layers = sorted(self.sensitivity_map.items(), key=lambda x: x[1], reverse=True)
+            for name, score in sorted_layers[:20]:
+                kept = "✓ KEPT" if name in layers_to_keep else "✗ QUANT"
+                print(f"  {name[:60]:60s} {score:.6f} {kept}")
 
         # 3. Collect layers to quantize
         layers_to_quantize = []
@@ -233,7 +240,7 @@ class SelectiveQuantizer:
                     layers_to_quantize.append(name)
 
         if verbose:
-            print(f"[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
+            print(f"\n[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
 
         # 4. Handle Accelerate dispatch if present
         is_dispatched = self._is_model_dispatched()
@@ -256,9 +263,6 @@ class SelectiveQuantizer:
                 print(f"[TARGET DEVICE] Consolidating model to {target_device}")
             
             try:
-                # Move everything to target device
-                self.model = self.model.to(target_device)
-                
                 # Force move all parameters and buffers
                 with torch.no_grad():
                     for param in self.model.parameters():
@@ -295,23 +299,20 @@ class SelectiveQuantizer:
                     print(f"[WARNING] Failed to quantize layer {layer_name}: {str(e)}")
                 continue
 
-        # 6. Final device consolidation if we had dispatch
+        # 6. Final device consolidation - be careful not to affect kept layers
         if is_dispatched and target_device is not None:
             if verbose:
                 print(f"[FINAL CONSOLIDATION] Ensuring all parameters on {target_device}...")
             try:
-                # Move the entire model (this should work now that hooks are removed)
-                self.model = self.model.to(target_device)
-                
-                # Double-check: manually move any stragglers
-                for name, param in self.model.named_parameters():
-                    if param.device != target_device:
-                        param.data = param.data.to(target_device)
-                
-                # Also move buffers (like embeddings)
-                for buffer_name, buffer in self.model.named_buffers():
-                    if buffer.device != target_device:
-                        buffer.data = buffer.data.to(target_device)
+                # Move only parameters/buffers individually to avoid affecting layer types
+                with torch.no_grad():
+                    for name, param in self.model.named_parameters():
+                        if param.device != target_device:
+                            param.data = param.data.to(target_device)
+                    
+                    for name, buffer in self.model.named_buffers():
+                        if buffer.device != target_device:
+                            buffer.data = buffer.data.to(target_device)
                 
                 # Final verification
                 devices = set()
@@ -382,7 +383,40 @@ class SelectiveQuantizer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # 10. Final report and return
+        # 10. VERIFICATION: Check what actually happened
+        if verbose:
+            print("\n[VERIFICATION] Checking actual layer types after quantization:")
+            fp16_actual = 0
+            int4_actual = 0
+            wrong_type = []
+            
+            for name, module in self.model.named_modules():
+                if isinstance(module, nn.Linear) and not isinstance(module, bnb.nn.Linear4bit):
+                    # This is FP16 Linear
+                    if name in layers_to_keep:
+                        fp16_actual += 1
+                    else:
+                        wrong_type.append(f"  ⚠️  {name} was supposed to be quantized but is still Linear")
+                elif isinstance(module, bnb.nn.Linear4bit):
+                    # This is INT4
+                    int4_actual += 1
+                    if name in layers_to_keep:
+                        wrong_type.append(f"  ⚠️  {name} was supposed to be kept FP16 but is Linear4bit")
+            
+            if wrong_type:
+                print("\n[WARNING] Type mismatches detected:")
+                for msg in wrong_type:
+                    print(msg)
+            
+            print(f"\n[ACTUAL COUNTS] FP16 Linear: {fp16_actual}, INT4 Linear4bit: {int4_actual}")
+            print(f"[EXPECTED COUNTS] FP16: {len(layers_to_keep)}, INT4: {len(layers_to_quantize)}")
+            
+            if fp16_actual == len(layers_to_keep) and int4_actual == len(layers_to_quantize):
+                print("[SUCCESS] ✓ All layers are correct types!")
+            else:
+                print("[WARNING] ✗ Layer type mismatch detected!")
+
+        # 11. Final report and return
         unchanged_count = total_linear - len(layers_to_quantize)
         compression_ratio = len(layers_to_quantize) / total_linear if total_linear > 0 else 0
         
