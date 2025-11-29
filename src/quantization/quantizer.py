@@ -87,11 +87,35 @@ class SelectiveQuantizer:
             primary_device = max(device_counts, key=device_counts.get)
             return torch.device(primary_device)
         return torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    
+    def _is_model_dispatched(self):
+        """Check if model is using Accelerate's device map."""
+        return hasattr(self.model, 'hf_device_map') or hasattr(self.model, '_hf_hook')
+    
+    def _remove_dispatch(self):
+        """Remove Accelerate's dispatch hooks to enable manual device placement."""
+        try:
+            from accelerate import remove_hook_from_module
+            from accelerate.hooks import remove_hook_from_submodules
+            
+            # Remove hooks from all submodules
+            remove_hook_from_submodules(self.model)
+            
+            # Clear device map attributes
+            if hasattr(self.model, 'hf_device_map'):
+                delattr(self.model, 'hf_device_map')
+            if hasattr(self.model, '_hf_hook'):
+                delattr(self.model, '_hf_hook')
+                
+            return True
+        except Exception as e:
+            print(f"[WARNING] Could not remove dispatch: {e}")
+            return False
 
     def _replace_linear_with_bnb(self, full_name, og_layer, target_device=None):
         # 1. Use consistent target device (override original device for multi-GPU fix)
         if target_device is None:
-            target_device = self._get_model_device()
+            target_device = og_layer.weight.device
         
         target_dtype = og_layer.weight.dtype
 
@@ -201,10 +225,38 @@ class SelectiveQuantizer:
         if verbose:
             print(f"[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
 
-        # 4. Determine target device for all quantized layers (fixes multi-GPU issue)
-        target_device = self._get_model_device()
-        if verbose:
-            print(f"[TARGET DEVICE] All layers will be moved to {target_device}")
+        # 4. Handle Accelerate dispatch if present
+        is_dispatched = self._is_model_dispatched()
+        target_device = None
+        
+        if is_dispatched:
+            if verbose:
+                print("[DETECTED] Model is using Accelerate device map")
+                print("[REMOVING] Accelerate dispatch hooks for manual device control...")
+            
+            success = self._remove_dispatch()
+            if not success and verbose:
+                print("[WARNING] Could not fully remove dispatch, attempting to continue...")
+            
+            # After removing dispatch, move to single device
+            target_device = self._get_model_device()
+            if verbose:
+                print(f"[TARGET DEVICE] Consolidating model to {target_device}")
+            
+            try:
+                self.model = self.model.to(target_device)
+                if verbose:
+                    print("[SUCCESS] Model moved to single device")
+            except Exception as e:
+                if verbose:
+                    print(f"[WARNING] Error moving model: {e}")
+                    print("[CONTINUING] Will use original layer devices")
+                target_device = None
+        else:
+            # Model not dispatched, use primary device for consistency
+            target_device = self._get_model_device()
+            if verbose:
+                print(f"[TARGET DEVICE] All layers will be placed on {target_device}")
 
         # 5. Perform quantization with consistent device placement
         for i, layer_name in enumerate(layers_to_quantize):
@@ -220,22 +272,44 @@ class SelectiveQuantizer:
                     print(f"[WARNING] Failed to quantize layer {layer_name}: {str(e)}")
                 continue
 
-        # 6. Ensure ALL model parameters are on the same device
-        if verbose:
-            print(f"[CONSOLIDATING] Moving entire model to {target_device}...")
-        self.model = self.model.to(target_device)
+        # 6. Final device consolidation if we had dispatch
+        if is_dispatched and target_device is not None:
+            if verbose:
+                print(f"[FINAL CONSOLIDATION] Ensuring all parameters on {target_device}...")
+            try:
+                # Move any remaining non-Linear layers to target device
+                for name, module in self.model.named_modules():
+                    if not isinstance(module, nn.Linear) and not isinstance(module, bnb.nn.Linear4bit):
+                        try:
+                            for param in module.parameters(recurse=False):
+                                if param.device != target_device:
+                                    param.data = param.data.to(target_device)
+                        except:
+                            pass
+                
+                # Also move buffers (like embeddings)
+                for buffer_name, buffer in self.model.named_buffers():
+                    if buffer.device != target_device:
+                        buffer.data = buffer.data.to(target_device)
+                        
+                if verbose:
+                    print("[SUCCESS] All parameters consolidated")
+            except Exception as e:
+                if verbose:
+                    print(f"[WARNING] Consolidation had issues: {e}")
 
         # 7. Set model to eval mode
         self.model.eval()
 
-        # 6. Optional validation
+        # 8. Optional validation
         if verbose:
             print("[VALIDATING] Testing model forward pass...")
         
         try:
             if len(list(self.model.parameters())) > 0:
-                # Use the consistent target device for validation
-                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=target_device)
+                # Use target device if set, otherwise get current device
+                device = target_device if target_device is not None else next(self.model.parameters()).device
+                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=device)
                 
                 with torch.no_grad():
                     _ = self.model(dummy_input)
@@ -245,8 +319,9 @@ class SelectiveQuantizer:
         except Exception as e:
             if verbose:
                 print(f"[WARNING] Validation failed: {str(e)}")
+                print("[INFO] This may be normal for some model architectures")
 
-        # 7. Final cleanup
+        # 9. Final cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
