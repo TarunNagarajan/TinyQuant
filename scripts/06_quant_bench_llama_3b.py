@@ -132,6 +132,12 @@ def main():
         model = AutoModelForCausalLM.from_pretrained(
             Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
         ).eval()
+        
+        # CRITICAL FIX: Cast the entire model to Float16 first.
+        # This ensures all activations, biases, and un-quantized layers 
+        # match the compute_dtype of the quantized layers.
+        model = model.to(dtype=torch.float16)
+
         quantizer = SelectiveQuantizer(model, tokenizer)
         model = quantizer.quantize(
             selection_method=args.selection_method,

@@ -76,6 +76,10 @@ class SelectiveQuantizer:
         return sorted_sens[threshold_idx]
 
     def _replace_linear_with_bnb(self, full_name, og_layer):
+        # 1. Capture strict Dtype and Device from the original layer
+        target_dtype = og_layer.weight.dtype
+        target_device = og_layer.weight.device
+        
         if "." in full_name:
             parent_name, child_name = full_name.rsplit(".", 1)
             parent = self.model.get_submodule(parent_name)
@@ -83,39 +87,38 @@ class SelectiveQuantizer:
             parent = self.model
             child_name = full_name
 
-        # 1. Create the 4bit layer on CPU first
+        # 2. Create Linear4bit (Match the target_dtype)
         new_layer = bnb.nn.Linear4bit(
             input_features=og_layer.in_features,
             output_features=og_layer.out_features,
-            compute_dtype=torch.float16, # Ensure this matches your model dtype
+            compute_dtype=target_dtype,  # <--- Strictly match model dtype
             bias=og_layer.bias is not None,
             quant_type="nf4",
         )
 
-        # 2. CRITICAL FIX: Move weights to CPU and Wrap in Params4bit
-        # We must detach to CPU so that the .to(device) call later TRIGGERS the quantization.
-        # If we just copy GPU->GPU, bnb often skips the quantization step.
+        # 3. Handle Weights (Move to CPU -> Wrap -> Move to GPU)
         weight_cpu = og_layer.weight.data.cpu()
-        
         new_layer.weight = Params4bit(
             weight_cpu, 
             requires_grad=False, 
             quant_type="nf4"
         )
 
-        # Handle Bias (Bias is not quantized, stays FP16)
+        # 4. Handle Bias (CRITICAL: Enforce Dtype match)
         if og_layer.bias is not None:
-            new_layer.bias = nn.Parameter(og_layer.bias.cpu(), requires_grad=False)
+            # Force bias to match the target dtype (e.g., float16)
+            bias_data = og_layer.bias.data.to(dtype=target_dtype).cpu()
+            new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
 
-        # 3. Move to Target Device -> THIS IS WHEN COMPRESSION HAPPENS
-        target_device = og_layer.weight.device
+        # 5. Move to Device (Triggers Quantization)
         new_layer = new_layer.to(target_device)
 
-        # 4. Swap the layer
+        # 6. Swap
         setattr(parent, child_name, new_layer)
-
-        # 5. Cleanup
         del og_layer
+        
+        # 7. Safety Clear
+        torch.cuda.empty_cache()
 
     def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
         
