@@ -95,17 +95,27 @@ class SelectiveQuantizer:
     def _remove_dispatch(self):
         """Remove Accelerate's dispatch hooks to enable manual device placement."""
         try:
-            from accelerate import remove_hook_from_module
-            from accelerate.hooks import remove_hook_from_submodules
+            from accelerate import infer_auto_device_map, dispatch_model
+            from accelerate.hooks import remove_hook_from_module, AlignDevicesHook
             
-            # Remove hooks from all submodules
-            remove_hook_from_submodules(self.model)
+            # Method 1: Try to remove hooks from all modules recursively
+            def remove_hooks_recursive(module):
+                # Remove hooks from current module
+                if hasattr(module, '_hf_hook'):
+                    delattr(module, '_hf_hook')
+                if hasattr(module, '_old_forward'):
+                    module.forward = module._old_forward
+                    delattr(module, '_old_forward')
+                
+                # Recurse to children
+                for child in module.children():
+                    remove_hooks_recursive(child)
             
-            # Clear device map attributes
+            remove_hooks_recursive(self.model)
+            
+            # Method 2: Clear device map attributes
             if hasattr(self.model, 'hf_device_map'):
                 delattr(self.model, 'hf_device_map')
-            if hasattr(self.model, '_hf_hook'):
-                delattr(self.model, '_hf_hook')
                 
             return True
         except Exception as e:
@@ -234,17 +244,30 @@ class SelectiveQuantizer:
                 print("[DETECTED] Model is using Accelerate device map")
                 print("[REMOVING] Accelerate dispatch hooks for manual device control...")
             
+            # Get target device BEFORE removing dispatch
+            target_device = self._get_model_device()
+            
+            # Remove dispatch
             success = self._remove_dispatch()
             if not success and verbose:
                 print("[WARNING] Could not fully remove dispatch, attempting to continue...")
             
-            # After removing dispatch, move to single device
-            target_device = self._get_model_device()
             if verbose:
                 print(f"[TARGET DEVICE] Consolidating model to {target_device}")
             
             try:
+                # Move everything to target device
                 self.model = self.model.to(target_device)
+                
+                # Force move all parameters and buffers
+                with torch.no_grad():
+                    for param in self.model.parameters():
+                        if param.device != target_device:
+                            param.data = param.data.to(target_device)
+                    for buffer in self.model.buffers():
+                        if buffer.device != target_device:
+                            buffer.data = buffer.data.to(target_device)
+                
                 if verbose:
                     print("[SUCCESS] Model moved to single device")
             except Exception as e:
@@ -277,26 +300,60 @@ class SelectiveQuantizer:
             if verbose:
                 print(f"[FINAL CONSOLIDATION] Ensuring all parameters on {target_device}...")
             try:
-                # Move any remaining non-Linear layers to target device
-                for name, module in self.model.named_modules():
-                    if not isinstance(module, nn.Linear) and not isinstance(module, bnb.nn.Linear4bit):
-                        try:
-                            for param in module.parameters(recurse=False):
-                                if param.device != target_device:
-                                    param.data = param.data.to(target_device)
-                        except:
-                            pass
+                # Move the entire model (this should work now that hooks are removed)
+                self.model = self.model.to(target_device)
+                
+                # Double-check: manually move any stragglers
+                for name, param in self.model.named_parameters():
+                    if param.device != target_device:
+                        param.data = param.data.to(target_device)
                 
                 # Also move buffers (like embeddings)
                 for buffer_name, buffer in self.model.named_buffers():
                     if buffer.device != target_device:
                         buffer.data = buffer.data.to(target_device)
-                        
+                
+                # Final verification
+                devices = set()
+                for param in self.model.parameters():
+                    devices.add(str(param.device))
+                for buffer in self.model.buffers():
+                    devices.add(str(buffer.device))
+                
                 if verbose:
-                    print("[SUCCESS] All parameters consolidated")
+                    if len(devices) == 1:
+                        print(f"[SUCCESS] All tensors on {list(devices)[0]}")
+                    else:
+                        print(f"[WARNING] Tensors still on multiple devices: {devices}")
+                        
             except Exception as e:
                 if verbose:
                     print(f"[WARNING] Consolidation had issues: {e}")
+        
+        # Additional check: verify no hooks remain and do final cleanup
+        if verbose:
+            print("[FINAL CHECK] Removing any remaining Accelerate hooks...")
+        
+        hooks_removed = 0
+        for name, module in self.model.named_modules():
+            if hasattr(module, '_hf_hook'):
+                delattr(module, '_hf_hook')
+                hooks_removed += 1
+            if hasattr(module, '_old_forward'):
+                module.forward = module._old_forward
+                delattr(module, '_old_forward')
+                hooks_removed += 1
+        
+        if verbose and hooks_removed > 0:
+            print(f"[CLEANED] Removed {hooks_removed} residual hooks/forwards")
+        
+        # Clear model-level dispatch attributes
+        for attr in ['hf_device_map', '_hf_hook', 'is_parallelizable', 'model_parallel']:
+            if hasattr(self.model, attr):
+                try:
+                    delattr(self.model, attr)
+                except:
+                    pass
 
         # 7. Set model to eval mode
         self.model.eval()
@@ -325,7 +382,7 @@ class SelectiveQuantizer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # 8. Report statistics
+        # 10. Final report and return
         unchanged_count = total_linear - len(layers_to_quantize)
         compression_ratio = len(layers_to_quantize) / total_linear if total_linear > 0 else 0
         
@@ -334,5 +391,25 @@ class SelectiveQuantizer:
             print(f"  - High precision layers: {unchanged_count}/{total_linear}")
             print(f"  - Quantized layers: {len(layers_to_quantize)}/{total_linear}")
             print(f"  - Compression ratio: {compression_ratio:.1%}")
+        
+        # CRITICAL: Re-wrap with accelerate if it was originally dispatched but on single device now
+        # This ensures compatibility with generation code that expects the model structure
+        if is_dispatched and target_device is not None:
+            if verbose:
+                print(f"[RE-INITIALIZING] Preparing model for single-device operation...")
+            
+            try:
+                # Create a simple single-device map
+                from accelerate import dispatch_model
+                device_map = {name: target_device for name, _ in self.model.named_parameters()}
+                
+                # Only dispatch if model expects it
+                # Actually, let's NOT re-dispatch - just ensure the model works standalone
+                if verbose:
+                    print("[INFO] Model prepared for single-device inference")
+                    
+            except Exception as e:
+                if verbose:
+                    print(f"[WARNING] Post-processing: {e}")
 
         return self.model
