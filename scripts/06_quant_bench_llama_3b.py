@@ -79,15 +79,14 @@ def main():
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
     parser.add_argument("--samples", type=int, default=200)
     # Arguments for selective quantization
-    parser.add_argument("--selection_method", type=str, default="knapsack", choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--selection_method", type=str, default="pct", choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
     parser.add_argument("--sensitivity_method", type=str, default="perturbation", choices=["perturbation", "fisher", "magnitude"])
     parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
-    parser.add_argument("--sensitivity_samples", type=int, default=32)
+    parser.add_argument("--sensitivity_samples", type=int, default=64)
     parser.add_argument("--budget_mb", type=int, default=4096)
-    parser.add_argument("--percentile", type=float, default=0.05)
+    parser.add_argument("--percentile", type=float, default=0.15)
     parser.add_argument("--sensitivity_ratio", type=float, default=0.05)
     parser.add_argument("--budget", type=float, default=0.95)
-
 
     args = parser.parse_args()
 
@@ -113,31 +112,43 @@ def main():
     dataset = dataset.select(range(min(args.samples, len(dataset))))
 
     tokenizer = AutoTokenizer.from_pretrained(Config.MODEL_ID)
-    if tokenizer.pad_token is None: tokenizer.pad_token = tokenizer.eos_token
+    if tokenizer.pad_token is None: 
+        tokenizer.pad_token = tokenizer.eos_token
 
     if args.mode == "baseline":
+        print("[LOADING] Baseline FP16 model")
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
+            Config.MODEL_ID, 
+            device_map="auto", 
+            torch_dtype=torch.float16
         ).eval()
+        
     elif args.mode == "naive":
+        print("[LOADING] Naive INT4 quantized model")
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=Config.DTYPE,
+            bnb_4bit_compute_dtype=torch.float16,
             bnb_4bit_quant_type="nf4"
         )
         model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, quantization_config=bnb_config, device_map="auto"
-        ).eval()
-    elif args.mode == "selective":
-        model = AutoModelForCausalLM.from_pretrained(
-            Config.MODEL_ID, device_map="auto", torch_dtype=Config.DTYPE
+            Config.MODEL_ID, 
+            quantization_config=bnb_config, 
+            device_map="auto"
         ).eval()
         
-        # CRITICAL FIX: Cast the entire model to Float16 first.
-        # This ensures all activations, biases, and un-quantized layers 
-        # match the compute_dtype of the quantized layers.
-        model = model.to(dtype=torch.float16)
-
+    elif args.mode == "selective":
+        print("[LOADING] Model for selective quantization")
+        model = AutoModelForCausalLM.from_pretrained(
+            Config.MODEL_ID, 
+            device_map="auto", 
+            torch_dtype=torch.float16
+        ).eval()
+        
+        # CRITICAL: Do NOT call model.to(dtype=...) here!
+        # The model is already in FP16 from torch_dtype above.
+        # Calling .to(dtype=...) after quantization will break Linear4bit layers!
+        
+        print("[QUANTIZING] Starting selective quantization")
         quantizer = SelectiveQuantizer(model, tokenizer)
         model = quantizer.quantize(
             selection_method=args.selection_method,
@@ -151,8 +162,7 @@ def main():
             verbose=True
         )
 
-    # CRITICAL FIX: Get the actual device the model is on
-    # This is essential after quantization which may consolidate to a different GPU
+    # Get the actual device the model is on after loading/quantization
     model_device = next(model.parameters()).device
     print(f"Model is on device: {model_device}")
 
@@ -177,13 +187,16 @@ def main():
         
         text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         
-        # CRITICAL FIX: Use model_device instead of Config.DEVICE
+        # CRITICAL: Use model_device, not Config.DEVICE
         # This ensures inputs are on the same device as the model
         inputs = tokenizer([text], return_tensors="pt").to(model_device)
 
         with torch.no_grad():
             output_ids = model.generate(
-                **inputs, max_new_tokens=256, do_sample=False, pad_token_id=tokenizer.eos_token_id
+                **inputs, 
+                max_new_tokens=256, 
+                do_sample=False, 
+                pad_token_id=tokenizer.eos_token_id
             )
 
         generated_ids = [out[len(inp):] for inp, out in zip(inputs.input_ids, output_ids)]
@@ -192,24 +205,40 @@ def main():
         pred_ans = extract_answer(response)
         gold_ans = extract_gold_answer(ex["answer"])
         is_correct = (pred_ans == gold_ans) and (pred_ans != "")
-        if is_correct: correct += 1
+        if is_correct: 
+            correct += 1
 
-        results.append({"question": question, "gold": gold_ans, "predicted": pred_ans, "correct": is_correct})
+        results.append({
+            "question": question, 
+            "gold": gold_ans, 
+            "predicted": pred_ans, 
+            "correct": is_correct
+        })
 
         if (idx + 1) % 20 == 0:
             with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
-                for r in results: json.dump(r, f); f.write("\n")
+                for r in results: 
+                    json.dump(r, f)
+                    f.write("\n")
 
     end_time = time.time()
     peak_vram = torch.cuda.max_memory_allocated() / 1024**3
     accuracy = correct / len(dataset)
 
-    print(f"Llama 3B {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+    print(f"\nLlama 3B {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        for r in results:
+            json.dump(r, f, ensure_ascii=False)
+            f.write("\n")
 
     with open(SUMMARY_FILE, "w") as f:
         json.dump({
-            "mode": args.mode, "accuracy": accuracy, "size_mb": model_size,
-            "peak_vram_gb": peak_vram, "time": end_time - start_time,
+            "mode": args.mode, 
+            "accuracy": accuracy, 
+            "size_mb": model_size,
+            "peak_vram_gb": peak_vram, 
+            "time": end_time - start_time,
             "args": vars(args)
         }, f, indent=2)
 
