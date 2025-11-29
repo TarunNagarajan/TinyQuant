@@ -64,7 +64,15 @@ def main():
     )
 
     if args.method == "fisher":
-        scores = compute_fisher(model, tokenizer, args.dataset, reduction=args.reduction, n_samples=args.n_samples)
+        scores = compute_fisher(
+            model, 
+            tokenizer, 
+            args.dataset, 
+            reduction=args.reduction, 
+            n_samples=args.n_samples
+            # max_grad_norm=10.0  # Add this parameter
+        )
+        
         filename = f"fisher_{args.dataset}_{args.reduction}.json"
     elif args.method == "magnitude":
         scores = compute_magnitude(model)
