@@ -87,7 +87,7 @@ class SelectiveQuantizer:
         new_layer = bnb.nn.Linear4bit(
             input_features=og_layer.in_features,
             output_features=og_layer.out_features,
-            compute_dtype=torch.bfloat16, # Ensure this matches your model dtype
+            compute_dtype=torch.float16, # Ensure this matches your model dtype
             bias=og_layer.bias is not None,
             quant_type="nf4",
         )

@@ -3,7 +3,7 @@ import os
 
 class Config:
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    DTYPE = torch.bfloat16
+    DTYPE = torch.float16
     
     CALIBRATION_SAMPLES = 64
     CALIBRATION_BATCH_SIZE = 1
