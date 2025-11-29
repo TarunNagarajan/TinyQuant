@@ -151,6 +151,11 @@ def main():
             verbose=True
         )
 
+    # CRITICAL FIX: Get the actual device the model is on
+    # This is essential after quantization which may consolidate to a different GPU
+    model_device = next(model.parameters()).device
+    print(f"Model is on device: {model_device}")
+
     model_size = get_model_size_mb(model)
     print(f"Model Size: {model_size:.2f} MB")
 
@@ -171,7 +176,10 @@ def main():
         ]
         
         text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-        inputs = tokenizer([text], return_tensors="pt").to(Config.DEVICE)
+        
+        # CRITICAL FIX: Use model_device instead of Config.DEVICE
+        # This ensures inputs are on the same device as the model
+        inputs = tokenizer([text], return_tensors="pt").to(model_device)
 
         with torch.no_grad():
             output_ids = model.generate(
