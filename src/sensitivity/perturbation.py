@@ -34,6 +34,11 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
     model.eval()
     sensitivity_map = {}
 
+    # CRITICAL FIX: Get the actual device the model is on
+    # Don't assume Config.DEVICE, detect where model parameters actually are
+    model_device = next(model.parameters()).device
+    print(f"[{dsname}] [DEVICE] Model is on {model_device}, inputs will be sent there")
+
     # Store hooks handles to remove them later
     hooks = []
     # Temporary storage for inputs captured during forward pass
@@ -65,17 +70,22 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
     processed = 0
     for i, text in enumerate(tqdm(raw_samples, desc="Measuring MSE")):
         # A. Prepare Input
+        # CRITICAL FIX: Send inputs to the actual model device, not Config.DEVICE
         inputs = tokenizer(
             text,
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=2048
-        ).to(Config.DEVICE)
+        ).to(model_device)  # Fixed: use detected model_device
 
         # B. Run Forward Pass (Hooks capture inputs)
         with torch.no_grad():
-            model(**inputs)
+            try:
+                model(**inputs)
+            except Exception as e:
+                print(f"[ERROR] Forward pass failed for sample {i}: {str(e)}")
+                continue
 
         # C. Measure Damage Per Layer
         try:
@@ -88,7 +98,9 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
                 inp = layer_inputs[name]
 
                 with torch.no_grad():
+                    # Ensure input is on same device as layer weights
                     inp = inp.to(module.weight.device)
+                    
                     # 1. Ground Truth Output (FP16/BF16)
                     # We re-compute this locally to ensure we compare against the exact same input
                     out_gt = module(inp)
@@ -128,6 +140,10 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
         h.remove()
 
     # 4. Normalize Score by number of samples
+    if processed == 0:
+        print("[ERROR] No samples were processed successfully!")
+        return sensitivity_map
+    
     for name in sensitivity_map:
         sensitivity_map[name] /= processed
 
