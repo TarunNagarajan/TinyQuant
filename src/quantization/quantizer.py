@@ -105,7 +105,7 @@ class SelectiveQuantizer:
 
         # Handle Bias (Bias is not quantized, stays FP16)
         if og_layer.bias is not None:
-            new_layer.bias = nn.Parameter(og_layer.bias.data.cpu())
+            new_layer.bias = nn.Parameter(og_layer.bias.cpu())
 
         # 3. Move to Target Device -> THIS IS WHEN COMPRESSION HAPPENS
         target_device = og_layer.weight.device
