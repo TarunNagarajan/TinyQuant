@@ -82,6 +82,10 @@ def main():
     parser.add_argument("--quant_percentile", type=float, default=0.20)
     parser.add_argument("--quant_sensitivity_ratio", type=float, default=0.05)
     parser.add_argument("--quant_budget", type=float, default=0.95)
+    parser.add_argument("--fisher_clip_percentile", type=float, default=99.0,
+                        help="Percentile for Fisher gradient clipping")
+    parser.add_argument("--fisher_clip_samples", type=int, default=32,
+                        help="Samples for Fisher clip threshold estimation")
     args = parser.parse_args()
 
     # Security: Validate filename to prevent path traversal
@@ -134,6 +138,8 @@ def main():
             percentile=args.quant_percentile,
             sensitivity_ratio=args.quant_sensitivity_ratio,
             budget=args.quant_budget,
+            fisher_clip_percentile=args.fisher_clip_percentile,
+            fisher_clip_samples=args.fisher_clip_samples,
             verbose=True
         )
 

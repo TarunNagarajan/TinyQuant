@@ -192,15 +192,22 @@ class SelectiveQuantizer:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-    def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", 
-                 dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, 
-                 sensitivity_ratio=0.05, budget=0.95, verbose=True, invert_selection=False):
+    def quantize(self, selection_method="knapsack", sensitivity_method="perturbation",
+                 dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20,
+                 sensitivity_ratio=0.05, budget=0.95, verbose=True, invert_selection=False,
+                 fisher_clip_percentile=99.0, fisher_clip_samples=32):
 
         # 1. Compute sensitivity if not already computed
         if self.sensitivity_map is None:
             if verbose:
                 print(f"[COMPUTING SENSITIVITY] Method: {sensitivity_method}")
-            self.compute_sensitivity(sensitivity_method, dsname, n_samples)
+            self.compute_sensitivity(
+                sensitivity_method,
+                dsname,
+                n_samples,
+                fisher_clip_percentile=fisher_clip_percentile,
+                fisher_clip_samples=fisher_clip_samples
+            )
 
         selection_method = selection_method.lower()
 

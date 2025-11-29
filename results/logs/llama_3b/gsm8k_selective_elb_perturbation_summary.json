@@ -1,0 +1,19 @@
+{
+  "mode": "selective",
+  "accuracy": 0.645,
+  "size_mb": 2468.2091064453125,
+  "peak_vram_gb": 4.551571846008301,
+  "time": 2218.592714548111,
+  "args": {
+    "mode": "selective",
+    "samples": 200,
+    "selection_method": "elb",
+    "sensitivity_method": "perturbation",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 64,
+    "budget_mb": 4096,
+    "percentile": 0.05,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95
+  }
+}

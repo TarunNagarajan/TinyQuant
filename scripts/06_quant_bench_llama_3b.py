@@ -89,6 +89,10 @@ def main():
     parser.add_argument("--budget", type=float, default=0.95)
     # NEW: Invert selection flag
     parser.add_argument("--invert_selection", action="store_true", help="Keep LOW sensitivity layers in FP16 instead of HIGH")
+    parser.add_argument("--fisher_clip_percentile", type=float, default=99.0,
+                        help="Percentile for Fisher gradient clipping")
+    parser.add_argument("--fisher_clip_samples", type=int, default=32,
+                        help="Samples for Fisher clip threshold estimation")
 
     args = parser.parse_args()
 
@@ -162,6 +166,8 @@ def main():
             sensitivity_ratio=args.sensitivity_ratio,
             budget=args.budget,
             invert_selection=args.invert_selection,  # Pass the invert flag
+            fisher_clip_percentile=args.fisher_clip_percentile,
+            fisher_clip_samples=args.fisher_clip_samples,
             verbose=True
         )
 
