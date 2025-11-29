@@ -87,6 +87,8 @@ def main():
     parser.add_argument("--percentile", type=float, default=0.15)
     parser.add_argument("--sensitivity_ratio", type=float, default=0.05)
     parser.add_argument("--budget", type=float, default=0.95)
+    # NEW: Invert selection flag
+    parser.add_argument("--invert_selection", action="store_true", help="Keep LOW sensitivity layers in FP16 instead of HIGH")
 
     args = parser.parse_args()
 
@@ -99,6 +101,8 @@ def main():
             log_suffix += f"_pct{int(args.percentile*100)}"
         elif args.selection_method == "knapsack":
             log_suffix += f"_budget{args.budget_mb}"
+        if args.invert_selection:
+            log_suffix += "_INVERTED"
     else:
         log_suffix = args.mode
 
@@ -107,6 +111,8 @@ def main():
     SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_summary.json")
 
     print(f"Running Llama 3B Benchmark | Mode: {args.mode}")
+    if args.mode == "selective" and args.invert_selection:
+        print("[EXPERIMENT] INVERTED SELECTION - Keeping LOW sensitivity in FP16")
 
     dataset = load_dataset("openai/gsm8k", "main", split="test")
     dataset = dataset.select(range(min(args.samples, len(dataset))))
@@ -144,10 +150,6 @@ def main():
             torch_dtype=torch.float16
         ).eval()
         
-        # CRITICAL: Do NOT call model.to(dtype=...) here!
-        # The model is already in FP16 from torch_dtype above.
-        # Calling .to(dtype=...) after quantization will break Linear4bit layers!
-        
         print("[QUANTIZING] Starting selective quantization")
         quantizer = SelectiveQuantizer(model, tokenizer)
         model = quantizer.quantize(
@@ -159,6 +161,7 @@ def main():
             percentile=args.percentile,
             sensitivity_ratio=args.sensitivity_ratio,
             budget=args.budget,
+            invert_selection=args.invert_selection,  # Pass the invert flag
             verbose=True
         )
 
@@ -226,6 +229,8 @@ def main():
     accuracy = correct / len(dataset)
 
     print(f"\nLlama 3B {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
+    if args.mode == "selective" and args.invert_selection:
+        print("[RESULT] This was with INVERTED selection (LOW sensitivity kept in FP16)")
 
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         for r in results:
