@@ -76,10 +76,11 @@ class SelectiveQuantizer:
         return sorted_sens[threshold_idx]
 
     def _replace_linear_with_bnb(self, full_name, og_layer):
-        # 1. Capture strict Dtype and Device from the original layer
-        target_dtype = og_layer.weight.dtype
+        # 1. Capture device and dtype from original layer
         target_device = og_layer.weight.device
+        target_dtype = og_layer.weight.dtype
 
+        # 2. Get parent module
         if "." in full_name:
             parent_name, child_name = full_name.rsplit(".", 1)
             parent = self.model.get_submodule(parent_name)
@@ -87,59 +88,66 @@ class SelectiveQuantizer:
             parent = self.model
             child_name = full_name
 
-        # 2. Create Linear4bit (Use the same dtype as the original layer to ensure compatibility)
+        # 3. Create Linear4bit with proper configuration
         new_layer = bnb.nn.Linear4bit(
             input_features=og_layer.in_features,
             output_features=og_layer.out_features,
-            compute_dtype=target_dtype,  # Use the same dtype as original layer
             bias=og_layer.bias is not None,
+            compute_dtype=target_dtype,
             quant_type="nf4",
         )
 
-        # 3. Handle Weights (Move to CPU -> Wrap -> Move to GPU)
-        weight_cpu = og_layer.weight.data.cpu().clone()  # Clone to ensure tensor is properly detached
-        new_layer.weight = Params4bit(
-            weight_cpu,
-            requires_grad=False,
-            quant_type="nf4"
-        )
+        # 4. Quantize weights properly
+        # Move weights to CPU, quantize, then move back to target device
+        with torch.no_grad():
+            weight_data = og_layer.weight.data.to('cpu', copy=True)
+            
+            # Create Params4bit on CPU
+            quantized_weight = Params4bit(
+                weight_data,
+                requires_grad=False,
+                quant_type="nf4",
+            )
+            
+            new_layer.weight = quantized_weight
 
-        # 4. Handle Bias (CRITICAL: Enforce Dtype match)
-        if og_layer.bias is not None:
-            # Force bias to match the target dtype from original layer
-            bias_data = og_layer.bias.data.to(dtype=target_dtype).cpu().clone()
-            new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
+            # 5. Handle bias if present
+            if og_layer.bias is not None:
+                bias_data = og_layer.bias.data.to(dtype=target_dtype, device='cpu', copy=True)
+                new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
 
-        # 5. Move to Device (Triggers Quantization)
-        new_layer = new_layer.to(og_layer.weight.device)  # Use the original layer's specific device
+        # 6. Move entire layer to target device (triggers quantization finalization)
+        new_layer = new_layer.to(target_device)
 
-        # 6. Swap
+        # 7. Replace the layer in the parent module
         setattr(parent, child_name, new_layer)
 
-        # 7. Explicitly delete the original layer to free memory
-        del og_layer.weight
-        if hasattr(og_layer, 'bias') and og_layer.bias is not None:
-            del og_layer.bias
+        # 8. Clean up old layer
         del og_layer
+        
+        # 9. Clear CUDA cache
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
-        # 8. Ensure the model is in the correct mode after replacement
-        # (swap operation already places it on the right device)
-
-        # 9. Safety Clear
-        torch.cuda.empty_cache()
-
-    def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
+    def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", 
+                 dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, 
+                 sensitivity_ratio=0.05, budget=0.95, verbose=True):
 
         # 1. Compute sensitivity if not already computed
         if self.sensitivity_map is None:
+            if verbose:
+                print(f"[COMPUTING SENSITIVITY] Method: {sensitivity_method}")
             self.compute_sensitivity(sensitivity_method, dsname, n_samples)
 
         selection_method = selection_method.lower()
 
+        # 2. Select layers to keep in high precision
         if selection_method == "knapsack":
+            if verbose:
+                print(f"[SELECTION METHOD] Knapsack with budget {budget_mb}MB")
             layers_to_keep = knapsack_solver(self.model, self.sensitivity_map, budget_mb)
         else:
-            # Existing threshold-based methods
+            # Threshold-based selection methods
             if selection_method == "pct":
                 threshold = SelectiveQuantizer.get_threshold_pct(self.sensitivity_map, percentile)
             elif selection_method == "otsu":
@@ -151,66 +159,81 @@ class SelectiveQuantizer:
             elif selection_method == "cumulative":
                 threshold = SelectiveQuantizer.cumulative_budget_threshold(self.sensitivity_map, budget)
             else:
-                raise ValueError(f"[UNKNOWN SELECTION METHOD] [{selection_method}]")
+                raise ValueError(f"Unknown selection method: {selection_method}")
 
             if verbose:
-                print(f"[COMPUTED THRESHOLD] [{selection_method.upper()}]")
+                print(f"[THRESHOLD COMPUTED] Method: {selection_method.upper()}, Value: {threshold:.6f}")
 
-            layers_to_keep = []
-            for name, module in self.model.named_modules():
-                if isinstance(module, nn.Linear):
-                    if name in self.sensitivity_map:
-                        if self.sensitivity_map[name] >= threshold:
-                            layers_to_keep.append(name)
-                    else:
-                        # If a linear layer has no score, it will not be kept and will be quantized.
-                        # This is a reasonable default for layers without sensitivity info.
-                        pass
+            # Select layers above threshold
+            layers_to_keep = [
+                name for name, score in self.sensitivity_map.items() 
+                if score >= threshold
+            ]
 
-        # Quantize layers that are not in the keep list
-        replaces = []
+        if verbose:
+            print(f"[KEEPING {len(layers_to_keep)} LAYERS IN HIGH PRECISION]")
+
+        # 3. Collect layers to quantize
+        layers_to_quantize = []
         total_linear = 0
+        
         for name, module in self.model.named_modules():
             if isinstance(module, nn.Linear):
                 total_linear += 1
                 if name not in layers_to_keep:
-                    replaces.append((name, module))
-
-        unchanged_count = total_linear - len(replaces)
+                    layers_to_quantize.append(name)
 
         if verbose:
-            print(f"[QUANTIZING {len(replaces)} LAYERS TO INT4]")
+            print(f"[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
 
-        # Process replacements in a way that avoids memory issues
-        # Store names to be replaced first, then replace them
-        replace_names = [name for name, module in replaces]
+        # 4. Perform quantization
+        for i, layer_name in enumerate(layers_to_quantize):
+            if verbose and (i + 1) % 10 == 0:
+                print(f"[PROGRESS] {i + 1}/{len(layers_to_quantize)} layers quantized")
+            
+            # Get the current module reference
+            try:
+                module = dict(self.model.named_modules())[layer_name]
+                self._replace_linear_with_bnb(layer_name, module)
+            except Exception as e:
+                if verbose:
+                    print(f"[WARNING] Failed to quantize layer {layer_name}: {str(e)}")
+                continue
 
-        for name in replace_names:
-            # Get the module again to make sure it's the current one
-            module = dict(self.model.named_modules())[name]
-            self._replace_linear_with_bnb(name, module)
-
-        # Ensure model is in evaluation mode after quantization
+        # 5. Set model to eval mode
         self.model.eval()
 
-        # Perform a forward pass with a dummy input to verify the model is in a valid state
-        # Only try validation if the model has parameters (i.e., if it's been loaded properly)
+        # 6. Optional validation
+        if verbose:
+            print("[VALIDATING] Testing model forward pass...")
+        
         try:
-            # Test that model still functions properly
             if len(list(self.model.parameters())) > 0:
-                # Create dummy input on the same device as the first parameter
-                first_param_device = next(self.model.parameters()).device
-                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=first_param_device)
+                first_param = next(self.model.parameters())
+                device = first_param.device
+                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=device)
+                
                 with torch.no_grad():
                     _ = self.model(dummy_input)
+                
+                if verbose:
+                    print("[VALIDATION] Model forward pass successful!")
         except Exception as e:
             if verbose:
-                print(f"[WARNING] Model validation after quantization failed: {str(e)}")
+                print(f"[WARNING] Validation failed: {str(e)}")
 
-        torch.cuda.empty_cache()
+        # 7. Final cleanup
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
+        # 8. Report statistics
+        unchanged_count = total_linear - len(layers_to_quantize)
+        compression_ratio = len(layers_to_quantize) / total_linear if total_linear > 0 else 0
+        
         if verbose:
-            print(f"[UNCHANGED: {unchanged_count}/{total_linear} REMAIN IN HIGH PRECISION]")
-            print(f"[COMPRESSION RATIO (LAYERS): {len(replaces)/total_linear:.1%}]")
+            print(f"\n[QUANTIZATION COMPLETE]")
+            print(f"  - High precision layers: {unchanged_count}/{total_linear}")
+            print(f"  - Quantized layers: {len(layers_to_quantize)}/{total_linear}")
+            print(f"  - Compression ratio: {compression_ratio:.1%}")
 
         return self.model
