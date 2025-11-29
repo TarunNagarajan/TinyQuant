@@ -124,4 +124,8 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
     for name in sensitivity_map:
         sensitivity_map[name] /= processed
 
+    if sensitivity_map: # Check if map is not empty
+        scores_values = list(sensitivity_map.values())
+        print(f"[DEBUG PERTURBATION] Scores - Min: {min(scores_values):.2e}, Max: {max(scores_values):.2e}, Mean: {sum(scores_values)/len(scores_values):.2e}")
+
     return sensitivity_map

@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-import bitsandbytes as bnb 
-import numpy as np
-from kneed import KneeLocator
-from skimage.filters import threshold_otsu
+import bitsandbytes as bnb
+from bitsandbytes.nn import Params4bit
 
 from src.sensitivity.fisher import compute_fisher
 from src.sensitivity.magnitude import compute_magnitude
@@ -75,31 +73,45 @@ class SelectiveQuantizer:
         return sorted_sens[threshold_idx]
 
     def _replace_linear_with_bnb(self, full_name, og_layer):
-        # physically replace torch.nn.Linear with bnb.nn.Linear4bit
         if "." in full_name:
             parent_name, child_name = full_name.rsplit(".", 1)
             parent = self.model.get_submodule(parent_name)
         else:
-            # This handles top-level layers like 'lm_head'
             parent = self.model
             child_name = full_name
 
+        # 1. Create the 4bit layer on CPU first
         new_layer = bnb.nn.Linear4bit(
-            input_features = og_layer.in_features,
-            output_features = og_layer.out_features,
-            compute_dtype = torch.bfloat16,
-            bias = og_layer.bias is not None,
-            quant_type = "nf4",
+            input_features=og_layer.in_features,
+            output_features=og_layer.out_features,
+            compute_dtype=torch.bfloat16, # Ensure this matches your model dtype
+            bias=og_layer.bias is not None,
+            quant_type="nf4",
         )
 
-        new_layer.weight.data = og_layer.weight.data
+        # 2. CRITICAL FIX: Move weights to CPU and Wrap in Params4bit
+        # We must detach to CPU so that the .to(device) call later TRIGGERS the quantization.
+        # If we just copy GPU->GPU, bnb often skips the quantization step.
+        weight_cpu = og_layer.weight.data.cpu()
+        
+        new_layer.weight = Params4bit(
+            weight_cpu, 
+            requires_grad=False, 
+            quant_type="nf4"
+        )
 
+        # Handle Bias (Bias is not quantized, stays FP16)
         if og_layer.bias is not None:
-            new_layer.bias = og_layer.bias 
+            new_layer.bias = nn.Parameter(og_layer.bias.data.cpu())
 
-        new_layer = new_layer.to(og_layer.weight.device)
+        # 3. Move to Target Device -> THIS IS WHEN COMPRESSION HAPPENS
+        target_device = og_layer.weight.device
+        new_layer = new_layer.to(target_device)
+
+        # 4. Swap the layer
         setattr(parent, child_name, new_layer)
 
+        # 5. Cleanup
         del og_layer
 
     def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
