@@ -17,13 +17,27 @@ class SelectiveQuantizer:
         self.tokenizer = tokenizer
         self.sensitivity_map = None
 
-    def compute_sensitivity(self, method, dsname, n_samples, reduction="mean"):
+    def compute_sensitivity(self, method, dsname, n_samples, reduction="mean", 
+                       fisher_clip_percentile=99.0, fisher_clip_samples=32):
         if method == "fisher":
-            self.sensitivity_map = compute_fisher(self.model, self.tokenizer, dsname, reduction=reduction, n_samples=n_samples)
+            self.sensitivity_map = compute_fisher(
+            self.model, 
+            self.tokenizer, 
+            dsname, 
+            reduction=reduction, 
+            n_samples=n_samples,
+            clip_percentile=fisher_clip_percentile,
+            clip_samples=fisher_clip_samples
+            )
         elif method == "magnitude":
             self.sensitivity_map = compute_magnitude(self.model)
         elif method == "perturbation":
-            self.sensitivity_map = compute_perturbation_sensitivity(self.model, self.tokenizer, dsname, n_samples=n_samples)
+            self.sensitivity_map = compute_perturbation_sensitivity(
+            self.model, 
+            self.tokenizer, 
+            dsname, 
+            n_samples=n_samples
+            )
         else:
             raise ValueError(f"Unknown sensitivity method: {method}")
 
