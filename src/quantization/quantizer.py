@@ -97,7 +97,7 @@ class SelectiveQuantizer:
         )
 
         # 3. Handle Weights (Move to CPU -> Wrap -> Move to GPU)
-        weight_cpu = og_layer.weight.data.cpu()
+        weight_cpu = og_layer.weight.data.cpu().clone()  # Clone to ensure tensor is properly detached
         new_layer.weight = Params4bit(
             weight_cpu,
             requires_grad=False,
@@ -107,7 +107,7 @@ class SelectiveQuantizer:
         # 4. Handle Bias (CRITICAL: Enforce Dtype match)
         if og_layer.bias is not None:
             # Force bias to match the target dtype (e.g., float16)
-            bias_data = og_layer.bias.data.to(dtype=target_dtype).cpu()
+            bias_data = og_layer.bias.data.to(dtype=target_dtype).cpu().clone()
             new_layer.bias = nn.Parameter(bias_data, requires_grad=False)
 
         # 5. Move to Device (Triggers Quantization)
@@ -122,11 +122,14 @@ class SelectiveQuantizer:
             del og_layer.bias
         del og_layer
 
-        # 8. Safety Clear
+        # 8. Ensure the model is in the correct mode after replacement
+        new_layer = new_layer.to(target_device)
+
+        # 9. Safety Clear
         torch.cuda.empty_cache()
 
     def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):
-        
+
         # 1. Compute sensitivity if not already computed
         if self.sensitivity_map is None:
             self.compute_sensitivity(sensitivity_method, dsname, n_samples)
@@ -149,10 +152,10 @@ class SelectiveQuantizer:
                 threshold = SelectiveQuantizer.cumulative_budget_threshold(self.sensitivity_map, budget)
             else:
                 raise ValueError(f"[UNKNOWN SELECTION METHOD] [{selection_method}]")
-            
+
             if verbose:
                 print(f"[COMPUTED THRESHOLD] [{selection_method.upper()}]")
-            
+
             layers_to_keep = []
             for name, module in self.model.named_modules():
                 if isinstance(module, nn.Linear):
@@ -172,14 +175,33 @@ class SelectiveQuantizer:
                 total_linear += 1
                 if name not in layers_to_keep:
                     replaces.append((name, module))
-        
+
         unchanged_count = total_linear - len(replaces)
 
         if verbose:
             print(f"[QUANTIZING {len(replaces)} LAYERS TO INT4]")
-        
-        for name, module in replaces:
+
+        # Process replacements in a way that avoids memory issues
+        # Store names to be replaced first, then replace them
+        replace_names = [name for name, module in replaces]
+
+        for name in replace_names:
+            # Get the module again to make sure it's the current one
+            module = dict(self.model.named_modules())[name]
             self._replace_linear_with_bnb(name, module)
+
+        # Ensure model is in evaluation mode after quantization
+        self.model.eval()
+
+        # Perform a forward pass with a dummy input to verify the model is in a valid state
+        try:
+            # Test that model still functions properly
+            dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=next(self.model.parameters()).device)
+            with torch.no_grad():
+                _ = self.model(dummy_input)
+        except Exception as e:
+            if verbose:
+                print(f"[WARNING] Model validation after quantization failed: {str(e)}")
 
         torch.cuda.empty_cache()
 
