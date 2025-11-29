@@ -7,7 +7,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from src.sensitivity.fisher import compute_fisher
+from src.sensitivity.fisher import compute_fisher, compare_fisher_methods
 from src.sensitivity.magnitude import compute_magnitude
 from src.sensitivity.perturbation import compute_perturbation_sensitivity
 from src.config import Config
@@ -24,8 +24,9 @@ def main():
     parser.add_argument(
         "--method",
         type=str,
-        choices=["fisher", "magnitude", "perturbation"],
-        required=True
+        choices=["fisher", "magnitude", "perturbation", "compare_fisher"],
+        required=True,
+        help="Sensitivity computation method"
     )
     parser.add_argument(
         "--dataset",
@@ -45,6 +46,18 @@ def main():
         type=int,
         default=Config.CALIBRATION_SAMPLES,
         help="Number of samples to use for calibration"
+    )
+    parser.add_argument(
+        "--fisher_clip_percentile",
+        type=float,
+        default=99.0,
+        help="Percentile for adaptive gradient clipping in Fisher (None to disable). Default: 99.0"
+    )
+    parser.add_argument(
+        "--fisher_clip_samples",
+        type=int,
+        default=32,
+        help="Number of samples for estimating clip threshold. Default: 32"
     )
 
     args = parser.parse_args()
@@ -69,27 +82,58 @@ def main():
             tokenizer, 
             args.dataset, 
             reduction=args.reduction, 
-            n_samples=args.n_samples
-            # max_grad_norm=10.0  # Add this parameter
+            n_samples=args.n_samples,
+            clip_percentile=args.fisher_clip_percentile,
+            clip_samples=args.fisher_clip_samples
         )
         
-        filename = f"fisher_{args.dataset}_{args.reduction}.json"
+        # Construct filename with clip info
+        clip_str = f"clip{int(args.fisher_clip_percentile)}" if args.fisher_clip_percentile else "noclip"
+        filename = f"fisher_{args.dataset}_{args.reduction}_{clip_str}.json"
+        
+    elif args.method == "compare_fisher":
+        # Special mode: compare different Fisher settings
+        print("\n[COMPARISON MODE] Testing multiple Fisher configurations...")
+        results = compare_fisher_methods(
+            model, 
+            tokenizer, 
+            args.dataset, 
+            n_samples=args.n_samples
+        )
+        
+        # Save all results
+        for method_name, scores in results.items():
+            filename = f"fisher_{args.dataset}_{args.reduction}_{method_name}.json"
+            output_path = os.path.join(Config.MAPS_DIR, filename)
+            print(f"[SAVING] {filename}")
+            with open(output_path, "w") as f:
+                json.dump(scores, f, indent=2)
+        
+        print("\n[COMPLETE] All comparison results saved")
+        return
+        
     elif args.method == "magnitude":
         scores = compute_magnitude(model)
         filename = f"magnitude_{args.dataset}.json"
+        
     elif args.method == "perturbation":
-        scores = compute_perturbation_sensitivity(model, tokenizer, args.dataset, n_samples=args.n_samples)
+        scores = compute_perturbation_sensitivity(
+            model, 
+            tokenizer, 
+            args.dataset, 
+            n_samples=args.n_samples
+        )
         filename = f"perturbation_{args.dataset}.json"
     else:
         raise ValueError(f"Unknown method: {args.method}")
 
     output_path = os.path.join(Config.MAPS_DIR, filename)
-    print(f"[SAVING]")
+    print(f"\n[SAVING] {output_path}")
 
     with open(output_path, "w") as f:
         json.dump(scores, f, indent=2)
 
-    print("[COMPLETE]")
+    print("[COMPLETE] Sensitivity computation finished successfully")
 
 if __name__ == "__main__":
     main()
