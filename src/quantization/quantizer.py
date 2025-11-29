@@ -211,60 +211,79 @@ class SelectiveQuantizer:
 
         selection_method = selection_method.lower()
 
+        # CRITICAL FIX: Get Linear layer names FIRST
+        linear_layer_names = set()
+        for name, module in self.model.named_modules():
+            if isinstance(module, nn.Linear):
+                linear_layer_names.add(name)
+        
+        if verbose:
+            print(f"[DETECTED] {len(linear_layer_names)} Linear layers in model")
+        
+        # Filter sensitivity map to only Linear layers
+        linear_sensitivity_map = {
+            name: score for name, score in self.sensitivity_map.items()
+            if name in linear_layer_names
+        }
+        
+        if verbose:
+            print(f"[FILTERED] {len(linear_sensitivity_map)} Linear layers have sensitivity scores")
+            if len(linear_sensitivity_map) < len(linear_layer_names):
+                missing = len(linear_layer_names) - len(linear_sensitivity_map)
+                print(f"[WARNING] {missing} Linear layers missing sensitivity scores (will be quantized)")
+
         # 2. Select layers to keep in high precision
         if selection_method == "knapsack":
             if verbose:
                 print(f"[SELECTION METHOD] Knapsack with budget {budget_mb}MB")
-            layers_to_keep = knapsack_solver(self.model, self.sensitivity_map, budget_mb)
+            layers_to_keep = knapsack_solver(self.model, linear_sensitivity_map, budget_mb)
         else:
-            # Threshold-based selection methods
+            # CRITICAL FIX: Compute threshold using ONLY Linear layer scores
             if selection_method == "pct":
-                threshold = SelectiveQuantizer.get_threshold_pct(self.sensitivity_map, percentile)
+                threshold = SelectiveQuantizer.get_threshold_pct(linear_sensitivity_map, percentile)
             elif selection_method == "otsu":
-                threshold = SelectiveQuantizer.get_threshold_otsu(self.sensitivity_map)
+                threshold = SelectiveQuantizer.get_threshold_otsu(linear_sensitivity_map)
             elif selection_method == "elb":
-                threshold = SelectiveQuantizer.get_threshold_elb(self.sensitivity_map)
+                threshold = SelectiveQuantizer.get_threshold_elb(linear_sensitivity_map)
             elif selection_method == "gradient":
-                threshold = SelectiveQuantizer.find_optimal_threshold(self.sensitivity_map, sensitivity_ratio)
+                threshold = SelectiveQuantizer.find_optimal_threshold(linear_sensitivity_map, sensitivity_ratio)
             elif selection_method == "cumulative":
-                threshold = SelectiveQuantizer.cumulative_budget_threshold(self.sensitivity_map, budget)
+                threshold = SelectiveQuantizer.cumulative_budget_threshold(linear_sensitivity_map, budget)
             else:
                 raise ValueError(f"Unknown selection method: {selection_method}")
 
             if verbose:
                 print(f"[THRESHOLD COMPUTED] Method: {selection_method.upper()}, Value: {threshold:.6f}")
 
-            # CRITICAL CHANGE: INVERTED SELECTION
-            # Keep LOW sensitivity layers in FP16 instead of HIGH sensitivity
-            linear_layer_names = set()
-            for name, module in self.model.named_modules():
-                if isinstance(module, nn.Linear):
-                    linear_layer_names.add(name)
-
+            # Apply threshold to Linear layers only
             if invert_selection:
+                if verbose:
+                    print("[INVERTED SELECTION] Keeping LOW sensitivity layers in FP16")
                 layers_to_keep = [
-                    name for name, score in self.sensitivity_map.items() 
-                    if score <= threshold and name in linear_layer_names  # ADD THIS CHECK
+                    name for name, score in linear_sensitivity_map.items() 
+                    if score <= threshold
                 ]
             else:
+                if verbose:
+                    print("[NORMAL SELECTION] Keeping HIGH sensitivity layers in FP16")
                 layers_to_keep = [
-                    name for name, score in self.sensitivity_map.items() 
-                    if score >= threshold and name in linear_layer_names  # ADD THIS CHECK
+                    name for name, score in linear_sensitivity_map.items() 
+                    if score >= threshold
                 ]
 
         if verbose:
             print(f"[KEEPING {len(layers_to_keep)} LAYERS IN HIGH PRECISION]")
             
-            # DEBUG: Show top sensitive layers and which are kept
-            print(f"\n[DEBUG] Top 20 most sensitive layers:")
-            sorted_layers = sorted(self.sensitivity_map.items(), key=lambda x: x[1], reverse=True)
-            for name, score in sorted_layers[:20]:
+            # DEBUG: Show top sensitive LINEAR layers and which are kept
+            print(f"\n[DEBUG] Top 20 most sensitive LINEAR layers:")
+            sorted_linear_layers = sorted(linear_sensitivity_map.items(), key=lambda x: x[1], reverse=True)
+            for name, score in sorted_linear_layers[:20]:
                 kept = "✓ KEPT" if name in layers_to_keep else "✗ QUANT"
                 print(f"  {name[:60]:60s} {score:.6f} {kept}")
             
             # Also show BOTTOM 20 (least sensitive)
-            print(f"\n[DEBUG] Bottom 20 least sensitive layers:")
-            for name, score in sorted_layers[-20:]:
+            print(f"\n[DEBUG] Bottom 20 least sensitive LINEAR layers:")
+            for name, score in sorted_linear_layers[-20:]:
                 kept = "✓ KEPT" if name in layers_to_keep else "✗ QUANT"
                 print(f"  {name[:60]:60s} {score:.6f} {kept}")
 
