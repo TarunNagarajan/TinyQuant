@@ -38,20 +38,21 @@ def knapsack_solver(model, sensitivity_map, budget_mb):
     for name, module in model.named_modules():
         if name in sensitivity_map and isinstance(module, nn.Linear):
             sensitivity = sensitivity_map[name]
-            
+
             # Cost is the difference between FP16 and INT4
             cost_fp16 = get_module_memory_cost(module, "fp16")
             cost_int4 = get_module_memory_cost(module, "int4")
             cost_to_keep = cost_fp16 - cost_int4
-            
-            if cost_to_keep > 0:
-                density = sensitivity / cost_to_keep
-                layer_data.append({
-                    "name": name,
-                    "sensitivity": sensitivity,
-                    "cost": cost_to_keep,
-                    "density": density
-                })
+
+            if cost_to_keep > 0 and cost_to_keep != float('inf') and cost_to_keep != float('-inf'):
+                if cost_to_keep > 0:  # Avoid division by zero
+                    density = sensitivity / cost_to_keep
+                    layer_data.append({
+                        "name": name,
+                        "sensitivity": sensitivity,
+                        "cost": cost_to_keep,
+                        "density": density
+                    })
 
     # Sort layers by density in descending order
     layer_data.sort(key=lambda x: x["density"], reverse=True)

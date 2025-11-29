@@ -18,6 +18,15 @@ class Config:
 
     @staticmethod
     def set_model(model_name):
+        # Validate input to prevent directory traversal or invalid names
+        if not isinstance(model_name, str) or not model_name:
+            raise ValueError("Model name must be a non-empty string")
+
+        # Sanitize model_name to only contain allowed characters
+        import re
+        if not re.match(r'^[a-zA-Z0-9_]+$', model_name):
+            raise ValueError(f"Invalid model name: {model_name}. Only alphanumeric characters and underscores are allowed.")
+
         Config.MODEL_NAME = model_name
         if model_name == "qwen":
             Config.MODEL_ID = "Qwen/Qwen2.5-Math-1.5B-Instruct"
@@ -35,7 +44,7 @@ class Config:
         # Model-specific output directories
         Config.MAPS_DIR = os.path.join(Config.RESULTS_DIR, "maps", model_name)
         Config.LOGS_DIR = os.path.join(Config.RESULTS_DIR, "logs", model_name)
-        
+
         # Create directories if they don't exist
         os.makedirs(Config.MAPS_DIR, exist_ok=True)
         os.makedirs(Config.LOGS_DIR, exist_ok=True)

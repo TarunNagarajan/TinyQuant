@@ -232,8 +232,15 @@ def generate_reports(aggregated_data, module_stats, param_rankings_by_dataset, q
     return top_layers_df, module_stats_df, param_rankings_df, zones_df
 
 def run_full_analysis(model_name, top_k=10, top_percent=0.1):
+    # Validate model_name to prevent path traversal
+    import re
+    if not isinstance(model_name, str) or not model_name:
+        raise ValueError("Model name must be a non-empty string")
+    if not re.match(r'^[a-zA-Z0-9_]+$', model_name):
+        raise ValueError(f"Invalid model name: {model_name}. Only alphanumeric characters and underscores are allowed.")
+
     Config.set_model(model_name)
-    
+
     print(f"[MODEL] {model_name}")
     print("[LOADING] All Fisher and magnitude JSON results")
     all_data = organize_and_preprocess_data()

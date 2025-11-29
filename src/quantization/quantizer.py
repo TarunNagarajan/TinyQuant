@@ -79,7 +79,7 @@ class SelectiveQuantizer:
         # 1. Capture strict Dtype and Device from the original layer
         target_dtype = og_layer.weight.dtype
         target_device = og_layer.weight.device
-        
+
         if "." in full_name:
             parent_name, child_name = full_name.rsplit(".", 1)
             parent = self.model.get_submodule(parent_name)
@@ -99,8 +99,8 @@ class SelectiveQuantizer:
         # 3. Handle Weights (Move to CPU -> Wrap -> Move to GPU)
         weight_cpu = og_layer.weight.data.cpu()
         new_layer.weight = Params4bit(
-            weight_cpu, 
-            requires_grad=False, 
+            weight_cpu,
+            requires_grad=False,
             quant_type="nf4"
         )
 
@@ -115,9 +115,14 @@ class SelectiveQuantizer:
 
         # 6. Swap
         setattr(parent, child_name, new_layer)
+
+        # 7. Explicitly delete the original layer to free memory
+        del og_layer.weight
+        if hasattr(og_layer, 'bias') and og_layer.bias is not None:
+            del og_layer.bias
         del og_layer
-        
-        # 7. Safety Clear
+
+        # 8. Safety Clear
         torch.cuda.empty_cache()
 
     def quantize(self, selection_method="knapsack", sensitivity_method="perturbation", dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20, sensitivity_ratio=0.05, budget=0.95, verbose=True):

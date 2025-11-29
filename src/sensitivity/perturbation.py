@@ -20,20 +20,20 @@ def fake_quantize_int4(weight):
 
     # 3. Dequantize (The "Fake" part)
     w_dequant = w_int4 * scale
-    
-    return w_dequant
+
+    return w_dequant.detach()  # Detach to prevent gradient computation
 
 def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
     """
     Computes sensitivity by MEASURING the output MSE between FP16 and Simulated INT4.
-    
+
     Args:
         n_samples: 32 is usually statistically sufficient for sensitivity analysis.
                    Using more is slower but slightly more stable.
     """
     model.eval()
     sensitivity_map = {}
-    
+
     # Store hooks handles to remove them later
     hooks = []
     # Temporary storage for inputs captured during forward pass
@@ -43,7 +43,10 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
         def hook(module, input, output):
             # Capture the input tuple (input[0] is the tensor)
             # Detach to save memory, strictly minimal storage
-            layer_inputs[name] = input[0].detach() 
+            if isinstance(input, tuple) and len(input) > 0:
+                layer_inputs[name] = input[0].detach()
+            elif isinstance(input, torch.Tensor):
+                layer_inputs[name] = input.detach()
         return hook
 
     # 1. Register Hooks on all Linear layers
@@ -63,10 +66,10 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
     for i, text in enumerate(tqdm(raw_samples, desc="Measuring MSE")):
         # A. Prepare Input
         inputs = tokenizer(
-            text, 
-            return_tensors="pt", 
-            padding=True, 
-            truncation=True, 
+            text,
+            return_tensors="pt",
+            padding=True,
+            truncation=True,
             max_length=2048
         ).to(Config.DEVICE)
 
@@ -75,46 +78,50 @@ def compute_perturbation_sensitivity(model, tokenizer, dsname, n_samples=32):
             model(**inputs)
 
         # C. Measure Damage Per Layer
-        for name in target_modules:
-            module = dict(model.named_modules())[name]
-            
-            if name not in layer_inputs:
-                continue # Should not happen if hook fired
-            
-            inp = layer_inputs[name]
-            
-            with torch.no_grad():
-                inp = inp.to(module.weight.device)
-                # 1. Ground Truth Output (FP16/BF16)
-                # We re-compute this locally to ensure we compare against the exact same input
-                out_gt = module(inp)
-                
-                # 2. Fake Quantized Output (Simulated INT4)
-                w_orig = module.weight.data
-                w_quant = fake_quantize_int4(w_orig)
-                
-                # Manual linear pass: y = xA^T + b
-                out_quant = F.linear(inp, w_quant, module.bias)
-                
-                # 3. Compute MSE (The Sensitivity Score)
-                # We calculate standard MSE
-                mse = (out_gt - out_quant).pow(2).mean().item()
-                
-                # OPTIONAL: Normalize by output magnitude (Relative MSE)
-                # This helps if layers have vastly different scales. 
-                # For basic selection, raw MSE is often fine, but Relative is safer.
-                out_norm = out_gt.pow(2).mean().item() + 1e-6
-                score = mse / out_norm
+        try:
+            for name in target_modules:
+                module = dict(model.named_modules())[name]
 
-                sensitivity_map[name] = sensitivity_map.get(name, 0.0) + score
+                if name not in layer_inputs:
+                    continue # Should not happen if hook fired
 
-        # D. Cleanup to prevent VRAM explosion
-        layer_inputs.clear()
-        processed += 1
-        
-        # Periodic Cache Clear
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
+                inp = layer_inputs[name]
+
+                with torch.no_grad():
+                    inp = inp.to(module.weight.device)
+                    # 1. Ground Truth Output (FP16/BF16)
+                    # We re-compute this locally to ensure we compare against the exact same input
+                    out_gt = module(inp)
+
+                    # 2. Fake Quantized Output (Simulated INT4)
+                    w_orig = module.weight.data
+                    w_quant = fake_quantize_int4(w_orig)
+
+                    # Manual linear pass: y = xA^T + b
+                    out_quant = F.linear(inp, w_quant, module.bias)
+
+                    # 3. Compute MSE (The Sensitivity Score)
+                    # We calculate standard MSE
+                    mse = (out_gt - out_quant).pow(2).mean().item()
+
+                    # OPTIONAL: Normalize by output magnitude (Relative MSE)
+                    # This helps if layers have vastly different scales.
+                    # For basic selection, raw MSE is often fine, but Relative is safer.
+                    out_norm = out_gt.pow(2).mean().item() + 1e-6
+                    score = mse / out_norm
+
+                    sensitivity_map[name] = sensitivity_map.get(name, 0.0) + score
+        except RuntimeError as e:
+            print(f"[ERROR] Skipping sample {i} due to: {str(e)}")
+            continue
+        finally:
+            # D. Cleanup to prevent VRAM explosion
+            layer_inputs.clear()
+            processed += 1
+
+            # Periodic Cache Clear
+            if torch.cuda.is_available() and (i + 1) % 10 == 0:
+                torch.cuda.empty_cache()
 
     # 3. Remove Hooks
     for h in hooks:

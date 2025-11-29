@@ -116,8 +116,15 @@ def evaluate_wikitext(model, tokenizer, device, n_samples=50):
     return perplexity
 
 def run_baseline_evaluation(model_name, eval_type="both", gsm8k_samples=100, wikitext_samples=50):
+    # Validate model_name to prevent path traversal
+    import re
+    if not isinstance(model_name, str) or not model_name:
+        raise ValueError("Model name must be a non-empty string")
+    if not re.match(r'^[a-zA-Z0-9_]+$', model_name):
+        raise ValueError(f"Invalid model name: {model_name}. Only alphanumeric characters and underscores are allowed.")
+
     Config.set_model(model_name)
-    
+
     log_path = os.path.join(Config.LOGS_DIR, "baseline_eval.log")
     setup_logging(log_path)
     
