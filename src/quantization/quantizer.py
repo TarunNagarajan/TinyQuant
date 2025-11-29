@@ -75,9 +75,24 @@ class SelectiveQuantizer:
         threshold_idx = np.argmax(cumsum_normalized >= budget)
         return sorted_sens[threshold_idx]
 
-    def _replace_linear_with_bnb(self, full_name, og_layer):
-        # 1. Capture device and dtype from original layer
-        target_device = og_layer.weight.device
+    def _get_model_device(self):
+        """Get the primary device where most model parameters are located."""
+        device_counts = {}
+        for param in self.model.parameters():
+            device = str(param.device)
+            device_counts[device] = device_counts.get(device, 0) + 1
+        
+        # Return the device with most parameters
+        if device_counts:
+            primary_device = max(device_counts, key=device_counts.get)
+            return torch.device(primary_device)
+        return torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
+    def _replace_linear_with_bnb(self, full_name, og_layer, target_device=None):
+        # 1. Use consistent target device (override original device for multi-GPU fix)
+        if target_device is None:
+            target_device = self._get_model_device()
+        
         target_dtype = og_layer.weight.dtype
 
         # 2. Get parent module
@@ -186,7 +201,12 @@ class SelectiveQuantizer:
         if verbose:
             print(f"[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
 
-        # 4. Perform quantization
+        # 4. Determine target device for all quantized layers (fixes multi-GPU issue)
+        target_device = self._get_model_device()
+        if verbose:
+            print(f"[TARGET DEVICE] All layers will be moved to {target_device}")
+
+        # 5. Perform quantization with consistent device placement
         for i, layer_name in enumerate(layers_to_quantize):
             if verbose and (i + 1) % 10 == 0:
                 print(f"[PROGRESS] {i + 1}/{len(layers_to_quantize)} layers quantized")
@@ -194,13 +214,18 @@ class SelectiveQuantizer:
             # Get the current module reference
             try:
                 module = dict(self.model.named_modules())[layer_name]
-                self._replace_linear_with_bnb(layer_name, module)
+                self._replace_linear_with_bnb(layer_name, module, target_device=target_device)
             except Exception as e:
                 if verbose:
                     print(f"[WARNING] Failed to quantize layer {layer_name}: {str(e)}")
                 continue
 
-        # 5. Set model to eval mode
+        # 6. Ensure ALL model parameters are on the same device
+        if verbose:
+            print(f"[CONSOLIDATING] Moving entire model to {target_device}...")
+        self.model = self.model.to(target_device)
+
+        # 7. Set model to eval mode
         self.model.eval()
 
         # 6. Optional validation
@@ -209,9 +234,8 @@ class SelectiveQuantizer:
         
         try:
             if len(list(self.model.parameters())) > 0:
-                first_param = next(self.model.parameters())
-                device = first_param.device
-                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=device)
+                # Use the consistent target device for validation
+                dummy_input = torch.randint(0, 1000, (1, 10), dtype=torch.long, device=target_device)
                 
                 with torch.no_grad():
                     _ = self.model(dummy_input)
