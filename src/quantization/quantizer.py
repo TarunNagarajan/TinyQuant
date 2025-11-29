@@ -392,24 +392,16 @@ class SelectiveQuantizer:
             print(f"  - Quantized layers: {len(layers_to_quantize)}/{total_linear}")
             print(f"  - Compression ratio: {compression_ratio:.1%}")
         
-        # CRITICAL: Re-wrap with accelerate if it was originally dispatched but on single device now
-        # This ensures compatibility with generation code that expects the model structure
-        if is_dispatched and target_device is not None:
-            if verbose:
-                print(f"[RE-INITIALIZING] Preparing model for single-device operation...")
-            
-            try:
-                # Create a simple single-device map
-                from accelerate import dispatch_model
-                device_map = {name: target_device for name, _ in self.model.named_parameters()}
-                
-                # Only dispatch if model expects it
-                # Actually, let's NOT re-dispatch - just ensure the model works standalone
-                if verbose:
-                    print("[INFO] Model prepared for single-device inference")
-                    
-            except Exception as e:
-                if verbose:
-                    print(f"[WARNING] Post-processing: {e}")
-
+        # Get the device the model is on
+        model_device = next(self.model.parameters()).device
+        
+        if verbose:
+            print(f"\n[IMPORTANT] Model is on device: {model_device}")
+            print(f"[IMPORTANT] Ensure all inputs during generation are sent to {model_device}")
+            print(f"[EXAMPLE] input_ids = input_ids.to('{model_device}')")
+        
         return self.model
+    
+    def get_model_device(self):
+        """Helper method to get the device the model is on."""
+        return next(self.model.parameters()).device
