@@ -9,35 +9,23 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 from tqdm import tqdm
 
-# Add src to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.quantization.quantizer import SelectiveQuantizer
 from src.config import Config
 
-# --- 8-SHOT COT EXAMPLES ---
-COT_EXAMPLES = """Question: There are 15 trees in the grove. Grove workers will plant trees in the grove today. After they are done, there will be 21 trees. How many trees did the grove workers plant today?
-Answer: There are 15 trees originally. Then there were 21 trees after planting. So the number of trees planted is 21 - 15 = 6. The answer is 6.
+# --- OPTIMIZED 4-SHOT COT FOR PHI-2 (Shorter, Q&A Format) ---
+# Phi-2 works better with concise examples in Q&A format
+COT_EXAMPLES = """Q: There are 15 trees in the grove. Grove workers will plant trees today. After they are done, there will be 21 trees. How many trees did the grove workers plant?
+A: Originally 15 trees. After planting there are 21 trees. So 21 - 15 = 6 trees were planted. Answer: 6
 
-Question: If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?
-Answer: There are 3 cars already, and 2 more arrive, for a total of 3 + 2 = 5 cars. The answer is 5.
+Q: If there are 3 cars in the parking lot and 2 more cars arrive, how many cars are in the parking lot?
+A: Started with 3 cars. 2 more arrive. Total: 3 + 2 = 5 cars. Answer: 5
 
-Question: Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?
-Answer: Leah had 32 chocolates and her sister had 42. In total they had 32 + 42 = 74. They ate 35. So they have 74 - 35 = 39 pieces left. The answer is 39.
+Q: Leah had 32 chocolates and her sister had 42. If they ate 35, how many pieces do they have left in total?
+A: Leah had 32, sister had 42. Total = 32 + 42 = 74. They ate 35. Remaining: 74 - 35 = 39. Answer: 39
 
-Question: Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?
-Answer: Jason started with 20. He ended with 12. He gave away 20 - 12 = 8 lollipops. The answer is 8.
-
-Question: Shawn has five toys. For Christmas, he got two toys each from his mom and dad. How many toys does he have now?
-Answer: Shawn has 5 toys. Mom gave him 2. Dad gave him 2. Total new toys = 2 + 2 = 4. Total toys now = 5 + 4 = 9. The answer is 9.
-
-Question: There were 9 computers in the server room. Five more computers were installed each day for 4 days. How many computers are now in the server room?
-Answer: There were 9 computers. 5 computers were added for 4 days. So 5 * 4 = 20 computers were added. Total computers = 9 + 20 = 29. The answer is 29.
-
-Question: Michael had 58 golf balls. On tuesday, he lost 23 golf balls. On wednesday, he lost 2 more. How many golf balls did he have at the end of wednesday?
-Answer: Michael started with 58. Tuesday he lost 23, so he had 58 - 23 = 35. Wednesday he lost 2 more, so 35 - 2 = 33. The answer is 33.
-
-Question: Olivia has $23. She bought five bagels for $3 each. How much money does she have left?
-Answer: She bought 5 bagels. Each cost $3. Total cost = 5 * 3 = 15. She started with $23. Money left = 23 - 15 = 8. The answer is 8."""
+Q: Jason had 20 lollipops. He gave Denny some lollipops. Now Jason has 12 lollipops. How many lollipops did Jason give to Denny?
+A: Started with 20, ended with 12. Gave away: 20 - 12 = 8 lollipops. Answer: 8"""
 
 def get_model_size_mb(model):
     param_size = 0
@@ -49,20 +37,44 @@ def get_model_size_mb(model):
     return (param_size + buffer_size) / 1024**2
 
 def normalize_numeric_answer(answer):
-    if not answer: return ""
+    if not answer: 
+        return ""
     answer = str(answer).strip().replace(',', '').replace('$', '').replace('%', '').replace(' ', '')
     try:
         num = float(answer)
-        if num == int(num): return str(int(num))
+        if num == int(num): 
+            return str(int(num))
         return str(num)
     except:
         return answer
 
-def extract_answer(text):
-    # Phi-2 generates raw completion, extract last number
-    nums = re.findall(r"-?\d+\.?\d*", text)
+def extract_answer_phi2(text):
+    """
+    Phi-2 specific answer extraction.
+    
+    Phi-2 typically follows the pattern "Answer: X" from the few-shot examples.
+    We look for this pattern first, then fall back to extracting the last number.
+    """
+    # Try to find explicit "Answer: X" pattern
+    answer_match = re.search(r'Answer:\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
+    if answer_match:
+        return normalize_numeric_answer(answer_match.group(1))
+    
+    # Fallback: Look for last number in the generated text
+    # Split by common delimiters to focus on the answer portion
+    text_parts = re.split(r'[.!?\n]', text)
+    
+    # Check last few sentences for numbers
+    for part in reversed(text_parts[-3:]):
+        nums = re.findall(r'-?\d+(?:\.\d+)?', part)
+        if nums:
+            return normalize_numeric_answer(nums[-1])
+    
+    # Ultimate fallback: any number in text
+    nums = re.findall(r'-?\d+(?:\.\d+)?', text)
     if nums:
         return normalize_numeric_answer(nums[-1])
+    
     return ""
 
 def extract_gold_answer(answer_text):
@@ -78,15 +90,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
     parser.add_argument("--samples", type=int, default=200)
+    
     # Arguments for selective quantization
-    parser.add_argument("--selection_method", type=str, default="pct", choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
-    parser.add_argument("--sensitivity_method", type=str, default="perturbation", choices=["perturbation", "fisher", "magnitude"])
+    parser.add_argument("--selection_method", type=str, default="pct", 
+                       choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
+    parser.add_argument("--sensitivity_method", type=str, default="perturbation", 
+                       choices=["perturbation", "fisher", "magnitude"])
     parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
     parser.add_argument("--sensitivity_samples", type=int, default=64)
     parser.add_argument("--budget_mb", type=int, default=4096)
     parser.add_argument("--percentile", type=float, default=0.15)
     parser.add_argument("--sensitivity_ratio", type=float, default=0.05)
     parser.add_argument("--budget", type=float, default=0.95)
+    
+    # Fisher-specific arguments
+    parser.add_argument("--fisher_clip_percentile", type=float, default=99.0,
+                       help="Percentile for Fisher gradient clipping")
+    parser.add_argument("--fisher_clip_samples", type=int, default=32,
+                       help="Samples for Fisher clip threshold estimation")
 
     args = parser.parse_args()
 
@@ -147,7 +168,6 @@ def main():
             trust_remote_code=True
         ).eval()
         
-        # CRITICAL: No dtype conversion after loading
         print("[QUANTIZING] Starting selective quantization")
         quantizer = SelectiveQuantizer(model, tokenizer)
         model = quantizer.quantize(
@@ -159,10 +179,12 @@ def main():
             percentile=args.percentile,
             sensitivity_ratio=args.sensitivity_ratio,
             budget=args.budget,
+            fisher_clip_percentile=args.fisher_clip_percentile,
+            fisher_clip_samples=args.fisher_clip_samples,
             verbose=True
         )
 
-    # CRITICAL: Get actual device after quantization
+    # CRITICAL FIX: Get actual device AFTER model loading/quantization
     model_device = next(model.parameters()).device
     print(f"Model is on device: {model_device}")
 
@@ -173,43 +195,49 @@ def main():
     correct = 0
     start_time = time.time()
 
-    print("Starting 8-Shot Chain-of-Thought Evaluation...")
+    print("Starting 4-Shot Chain-of-Thought Evaluation (Phi-2 optimized)...")
     
     for idx in tqdm(range(len(dataset))):
         ex = dataset[idx]
         question = ex['question']
         
-        # Construct Prompt for Phi-2 (Raw completion format)
-        prompt_text = f"Solve the following math problems step by step. Show your reasoning clearly.\n\n{COT_EXAMPLES}\n\nQuestion: {question}\nAnswer:"
+        # Phi-2 optimized prompt format (Q&A style, concise)
+        prompt_text = f"{COT_EXAMPLES}\n\nQ: {question}\nA:"
         
-        # CRITICAL: Send to model_device, not Config.DEVICE
+        # CRITICAL FIX: Use model_device consistently
         inputs = tokenizer(prompt_text, return_tensors="pt").to(model_device)
 
         with torch.no_grad():
             output_ids = model.generate(
                 **inputs, 
                 max_new_tokens=256, 
-                do_sample=False, 
+                do_sample=False,
+                temperature=None,  # Disable sampling
+                top_p=None,
                 pad_token_id=tokenizer.eos_token_id
             )
 
-        # Decode only the NEW tokens
+        # Decode only the NEW tokens (the generated answer)
         input_len = inputs.input_ids.shape[1]
         response = tokenizer.decode(output_ids[0][input_len:], skip_special_tokens=True)
 
-        pred_ans = extract_answer(response)
+        # Use Phi-2 specific answer extraction
+        pred_ans = extract_answer_phi2(response)
         gold_ans = extract_gold_answer(ex["answer"])
         is_correct = (pred_ans == gold_ans) and (pred_ans != "")
+        
         if is_correct: 
             correct += 1
 
         results.append({
             "question": question, 
             "gold": gold_ans, 
-            "predicted": pred_ans, 
+            "predicted": pred_ans,
+            "response": response,  # Store full response for debugging
             "correct": is_correct
         })
 
+        # Checkpoint every 20 samples
         if (idx + 1) % 20 == 0:
             with open(CHECKPOINT_FILE, "w", encoding="utf-8") as f:
                 for r in results: 
@@ -222,6 +250,7 @@ def main():
 
     print(f"\nPhi-2 {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
 
+    # Save final results
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         for r in results:
             json.dump(r, f, ensure_ascii=False)
