@@ -181,6 +181,7 @@ def main():
             budget=args.budget,
             fisher_clip_percentile=args.fisher_clip_percentile,
             fisher_clip_samples=args.fisher_clip_samples,
+            block_method="transformer_blocks",
             verbose=True
         )
 
