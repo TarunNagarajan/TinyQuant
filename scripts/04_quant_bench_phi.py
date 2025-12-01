@@ -14,7 +14,6 @@ from src.quantization.quantizer import SelectiveQuantizer
 from src.config import Config
 
 # --- OPTIMIZED 4-SHOT COT FOR PHI-2 (Shorter, Q&A Format) ---
-# Phi-2 works better with concise examples in Q&A format
 COT_EXAMPLES = """Q: There are 15 trees in the grove. Grove workers will plant trees today. After they are done, there will be 21 trees. How many trees did the grove workers plant?
 A: Originally 15 trees. After planting there are 21 trees. So 21 - 15 = 6 trees were planted. Answer: 6
 
@@ -49,19 +48,13 @@ def normalize_numeric_answer(answer):
         return answer
 
 def extract_answer_phi2(text):
-    """
-    Phi-2 specific answer extraction.
-    
-    Phi-2 typically follows the pattern "Answer: X" from the few-shot examples.
-    We look for this pattern first, then fall back to extracting the last number.
-    """
+    """Phi-2 specific answer extraction."""
     # Try to find explicit "Answer: X" pattern
     answer_match = re.search(r'Answer:\s*(-?\d+(?:\.\d+)?)', text, re.IGNORECASE)
     if answer_match:
         return normalize_numeric_answer(answer_match.group(1))
     
     # Fallback: Look for last number in the generated text
-    # Split by common delimiters to focus on the answer portion
     text_parts = re.split(r'[.!?\n]', text)
     
     # Check last few sentences for numbers
@@ -86,6 +79,67 @@ def extract_gold_answer(answer_text):
         gold = nums[-1] if nums else ""
     return normalize_numeric_answer(gold)
 
+def visualize_block_structure(model, sensitivity_map, selection_method, percentile):
+    """
+    Visualizes the block structure and selection for block-aware methods.
+    
+    INSERT THIS FUNCTION AFTER MODEL LOADING BUT BEFORE EVALUATION.
+    """
+    if selection_method != "block_aware":
+        return  # Skip visualization for non-block methods
+    
+    print("\n" + "="*80)
+    print("BLOCK STRUCTURE VISUALIZATION")
+    print("="*80)
+    
+    from src.selection.block_analysis import BlockAnalyzer
+    
+    analyzer = BlockAnalyzer(model)
+    analyzer.identify_blocks(method="transformer_blocks")
+    
+    # Get block sensitivities
+    block_scores = analyzer.get_block_sensitivity(sensitivity_map)
+    sorted_blocks = sorted(block_scores.items(), key=lambda x: x[1], reverse=True)
+    
+    # Determine which blocks will be kept
+    num_keep = max(1, int(len(sorted_blocks) * percentile))
+    blocks_to_keep_ids = set([block_id for block_id, _ in sorted_blocks[:num_keep]])
+    
+    print(f"\nKeep Ratio: {percentile*100:.0f}% → Keeping {num_keep}/{len(sorted_blocks)} blocks\n")
+    print(f"{'Block':<8} {'Layers':<8} {'Avg Sensitivity':<18} {'Status':<12} {'Visual':<40}")
+    print("-"*86)
+    
+    for block_id, score in sorted_blocks:
+        block_layers = analyzer.blocks[block_id]
+        kept = block_id in blocks_to_keep_ids
+        status = "✓ KEPT FP16" if kept else "✗ QUANTIZED"
+        
+        # Visual bar
+        bar_length = int((score / max(block_scores.values())) * 35)
+        bar = "█" * bar_length + "░" * (35 - bar_length)
+        
+        print(f"{block_id:<8} {len(block_layers):<8} {score:<18.6f} {status:<12} {bar}")
+    
+    # Show sample layers from kept vs quantized blocks
+    print(f"\n{'='*80}")
+    print("SAMPLE LAYERS FROM KEPT BLOCKS:")
+    print("-"*80)
+    for block_id in list(blocks_to_keep_ids)[:3]:  # Show first 3 kept blocks
+        print(f"\nBlock {block_id} (Score: {block_scores[block_id]:.6f}):")
+        for layer in analyzer.blocks[block_id][:5]:  # Show first 5 layers
+            print(f"  - {layer}")
+    
+    print(f"\n{'='*80}")
+    print("SAMPLE LAYERS FROM QUANTIZED BLOCKS:")
+    print("-"*80)
+    quantized_block_ids = [bid for bid in sorted_blocks if bid[0] not in blocks_to_keep_ids]
+    for block_id, score in quantized_block_ids[:3]:  # Show first 3 quantized blocks
+        print(f"\nBlock {block_id} (Score: {score:.6f}):")
+        for layer in analyzer.blocks[block_id][:5]:
+            print(f"  - {layer}")
+    
+    print(f"\n{'='*80}\n")
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", type=str, default="baseline", choices=["baseline", "naive", "selective"])
@@ -93,7 +147,7 @@ def main():
     
     # Arguments for selective quantization
     parser.add_argument("--selection_method", type=str, default="pct", 
-                   choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative", "block_aware"])
+                       choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative", "block_aware"])
     parser.add_argument("--sensitivity_method", type=str, default="perturbation", 
                        choices=["perturbation", "fisher", "magnitude"])
     parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
@@ -108,6 +162,11 @@ def main():
                        help="Percentile for Fisher gradient clipping")
     parser.add_argument("--fisher_clip_samples", type=int, default=32,
                        help="Samples for Fisher clip threshold estimation")
+    
+    # Block-aware specific
+    parser.add_argument("--block_method", type=str, default="transformer_blocks",
+                       choices=["transformer_blocks", "weakly_connected", "depth_based"],
+                       help="Method for identifying computational blocks")
 
     args = parser.parse_args()
 
@@ -118,6 +177,8 @@ def main():
         log_suffix = f"{args.mode}_{args.selection_method}_{args.sensitivity_method}"
         if args.selection_method == "pct":
             log_suffix += f"_pct{int(args.percentile*100)}"
+        elif args.selection_method == "block_aware":
+            log_suffix += f"_block{int(args.percentile*100)}"
         elif args.selection_method == "knapsack":
             log_suffix += f"_budget{args.budget_mb}"
     else:
@@ -126,8 +187,11 @@ def main():
     CHECKPOINT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_checkpoint.jsonl")
     OUTPUT_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}.jsonl")
     SUMMARY_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_summary.json")
+    BLOCK_VIZ_FILE = os.path.join(Config.LOGS_DIR, f"gsm8k_{log_suffix}_block_structure.txt")
 
     print(f"Running Phi-2 Benchmark | Mode: {args.mode}")
+    if args.mode == "selective":
+        print(f"Selection: {args.selection_method} | Sensitivity: {args.sensitivity_method}")
 
     dataset = load_dataset("openai/gsm8k", "main", split="test")
     dataset = dataset.select(range(min(args.samples, len(dataset))))
@@ -170,6 +234,49 @@ def main():
         
         print("[QUANTIZING] Starting selective quantization")
         quantizer = SelectiveQuantizer(model, tokenizer)
+        
+        # ============================================================
+        # CRITICAL INSERTION POINT: VISUALIZE BLOCKS BEFORE QUANTIZING
+        # ============================================================
+        
+        # First compute sensitivity if not already done
+        if quantizer.sensitivity_map is None:
+            print(f"[COMPUTING SENSITIVITY] Method: {args.sensitivity_method}")
+            quantizer.compute_sensitivity(
+                args.sensitivity_method,
+                args.sensitivity_dataset,
+                args.sensitivity_samples,
+                fisher_clip_percentile=args.fisher_clip_percentile,
+                fisher_clip_samples=args.fisher_clip_samples
+            )
+        
+        # NOW VISUALIZE (only for block_aware method)
+        if args.selection_method == "block_aware":
+            print("\n[VISUALIZATION] Analyzing block structure...")
+            
+            # Redirect visualization to file
+            import sys
+            original_stdout = sys.stdout
+            with open(BLOCK_VIZ_FILE, 'w') as f:
+                sys.stdout = f
+                visualize_block_structure(
+                    model, 
+                    quantizer.sensitivity_map,
+                    args.selection_method,
+                    args.percentile
+                )
+                sys.stdout = original_stdout
+            
+            # Also print to console
+            with open(BLOCK_VIZ_FILE, 'r') as f:
+                print(f.read())
+            
+            print(f"[SAVED] Block structure visualization → {BLOCK_VIZ_FILE}")
+        
+        # ============================================================
+        # NOW PERFORM QUANTIZATION
+        # ============================================================
+        
         model = quantizer.quantize(
             selection_method=args.selection_method,
             sensitivity_method=args.sensitivity_method,
@@ -181,7 +288,7 @@ def main():
             budget=args.budget,
             fisher_clip_percentile=args.fisher_clip_percentile,
             fisher_clip_samples=args.fisher_clip_samples,
-            block_method="transformer_blocks",
+            block_method=args.block_method,
             verbose=True
         )
 
@@ -213,7 +320,7 @@ def main():
                 **inputs, 
                 max_new_tokens=256, 
                 do_sample=False,
-                temperature=None,  # Disable sampling
+                temperature=None,
                 top_p=None,
                 pad_token_id=tokenizer.eos_token_id
             )
@@ -234,7 +341,7 @@ def main():
             "question": question, 
             "gold": gold_ans, 
             "predicted": pred_ans,
-            "response": response,  # Store full response for debugging
+            "response": response,  # Full response for debugging
             "correct": is_correct
         })
 
@@ -251,21 +358,30 @@ def main():
 
     print(f"\nPhi-2 {args.mode} Result: {accuracy:.2%} | Size: {model_size:.2f}MB | VRAM: {peak_vram:.2f}GB")
 
-    # Save final results
+    # Save final results (ALL RESPONSES)
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
         for r in results:
             json.dump(r, f, ensure_ascii=False)
             f.write("\n")
+    
+    print(f"[SAVED] All {len(results)} responses → {OUTPUT_FILE}")
 
+    # Save summary
+    summary = {
+        "mode": args.mode, 
+        "accuracy": accuracy, 
+        "size_mb": model_size,
+        "peak_vram_gb": peak_vram, 
+        "time": end_time - start_time,
+        "args": vars(args),
+        "correct": correct,
+        "total": len(dataset)
+    }
+    
     with open(SUMMARY_FILE, "w") as f:
-        json.dump({
-            "mode": args.mode, 
-            "accuracy": accuracy, 
-            "size_mb": model_size,
-            "peak_vram_gb": peak_vram, 
-            "time": end_time - start_time,
-            "args": vars(args)
-        }, f, indent=2)
+        json.dump(summary, f, indent=2)
+    
+    print(f"[SAVED] Summary statistics → {SUMMARY_FILE}")
 
 if __name__ == "__main__":
     main()
