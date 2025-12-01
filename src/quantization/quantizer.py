@@ -89,6 +89,46 @@ class SelectiveQuantizer:
         threshold_idx = np.argmax(cumsum_normalized >= budget)
         return sorted_sens[threshold_idx]
 
+    def select_layers_block_aware(self, sensitivity_map, keep_ratio=0.3, block_method="transformer_blocks", verbose=True):
+        """
+        Block-aware layer selection to minimize format conversions.
+        
+        Args:
+            sensitivity_map: Layer-wise sensitivity scores
+            keep_ratio: Fraction of blocks to keep in FP16
+            block_method: Method for identifying blocks ('transformer_blocks', 'weakly_connected', 'depth_based')
+            verbose: Print diagnostic information
+        
+        Returns:
+            List of layer names to keep in FP16
+        """
+        from src.selection.block_analysis import BlockAnalyzer
+        
+        if verbose:
+            print(f"\n[BLOCK-AWARE SELECTION] Starting analysis...")
+            print(f"[PARAMETERS] keep_ratio={keep_ratio}, method={block_method}")
+        
+        analyzer = BlockAnalyzer(self.model)
+        analyzer.identify_blocks(method=block_method)
+        
+        if verbose:
+            analyzer.visualize_blocks(sensitivity_map)
+        
+        layers_to_keep = analyzer.select_blocks_to_keep(sensitivity_map, keep_ratio)
+        
+        if verbose:
+            # Show block composition
+            block_scores = analyzer.get_block_sensitivity(sensitivity_map)
+            sorted_blocks = sorted(block_scores.items(), key=lambda x: x[1], reverse=True)
+            
+            print(f"\n[BLOCK SENSITIVITY RANKING]")
+            for block_id, score in sorted_blocks[:10]:  # Top 10 blocks
+                block_layers = analyzer.blocks[block_id]
+                kept = "✓ KEPT" if any(layer in layers_to_keep for layer in block_layers) else "✗ QUANT"
+                print(f"  Block {block_id:2d}: {score:.6f} ({len(block_layers):2d} layers) {kept}")
+        
+        return list(layers_to_keep)
+
     def _get_model_device(self):
         """Get the primary device where most model parameters are located."""
         device_counts = {}
@@ -195,7 +235,7 @@ class SelectiveQuantizer:
     def quantize(self, selection_method="knapsack", sensitivity_method="perturbation",
                  dsname="gsm8k", n_samples=32, budget_mb=4096, percentile=0.20,
                  sensitivity_ratio=0.05, budget=0.95, verbose=True, invert_selection=False,
-                 fisher_clip_percentile=99.0, fisher_clip_samples=32):
+                 fisher_clip_percentile=99.0, fisher_clip_samples=32, block_method="transformer_blocks"):
 
         # 1. Compute sensitivity if not already computed
         if self.sensitivity_map is None:
@@ -237,6 +277,17 @@ class SelectiveQuantizer:
             if verbose:
                 print(f"[SELECTION METHOD] Knapsack with budget {budget_mb}MB")
             layers_to_keep = knapsack_solver(self.model, linear_sensitivity_map, budget_mb)
+        
+        elif selection_method == "block_aware":
+            if verbose:
+                print(f"[SELECTION METHOD] Block-aware with keep_ratio {percentile}")
+            layers_to_keep = self.select_layers_block_aware(
+                linear_sensitivity_map,
+                keep_ratio=percentile,
+                block_method=block_method,
+                verbose=verbose
+            )
+        
         else:
             # CRITICAL FIX: Compute threshold using ONLY Linear layer scores
             if selection_method == "pct":
