@@ -93,7 +93,7 @@ def main():
     
     # Arguments for selective quantization
     parser.add_argument("--selection_method", type=str, default="pct", 
-                       choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative"])
+                   choices=["knapsack", "pct", "otsu", "elb", "gradient", "cumulative", "block_aware"])
     parser.add_argument("--sensitivity_method", type=str, default="perturbation", 
                        choices=["perturbation", "fisher", "magnitude"])
     parser.add_argument("--sensitivity_dataset", type=str, default="gsm8k")
