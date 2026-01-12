@@ -1,0 +1,96 @@
+
+================================================================================
+BLOCK STRUCTURE VISUALIZATION
+================================================================================
+[BLOCK ANALYSIS] Identified 33 computational blocks
+
+Keep Ratio: 30% → Keeping 9/33 blocks
+
+Block    Layers   Avg Sensitivity    Status       Visual                                  
+--------------------------------------------------------------------------------------
+26       6        0.000005           ✓ KEPT FP16  ███████████████████████████████████
+29       6        0.000004           ✓ KEPT FP16  ███████████████████████████████░░░░
+11       6        0.000004           ✓ KEPT FP16  █████████████████████████████░░░░░░
+0        6        0.000004           ✓ KEPT FP16  █████████████████████████████░░░░░░
+10       6        0.000004           ✓ KEPT FP16  █████████████████████████░░░░░░░░░░
+9        6        0.000003           ✓ KEPT FP16  ████████████████████████░░░░░░░░░░░
+25       6        0.000003           ✓ KEPT FP16  ████████████████████████░░░░░░░░░░░
+15       6        0.000003           ✓ KEPT FP16  ███████████████████████░░░░░░░░░░░░
+23       6        0.000003           ✓ KEPT FP16  ███████████████████████░░░░░░░░░░░░
+12       6        0.000003           ✗ QUANTIZED  ███████████████████████░░░░░░░░░░░░
+21       6        0.000003           ✗ QUANTIZED  ███████████████████████░░░░░░░░░░░░
+14       6        0.000003           ✗ QUANTIZED  ██████████████████████░░░░░░░░░░░░░
+2        6        0.000003           ✗ QUANTIZED  ██████████████████████░░░░░░░░░░░░░
+24       6        0.000003           ✗ QUANTIZED  ██████████████████████░░░░░░░░░░░░░
+16       6        0.000003           ✗ QUANTIZED  █████████████████████░░░░░░░░░░░░░░
+13       6        0.000003           ✗ QUANTIZED  █████████████████████░░░░░░░░░░░░░░
+18       6        0.000003           ✗ QUANTIZED  █████████████████████░░░░░░░░░░░░░░
+8        6        0.000003           ✗ QUANTIZED  █████████████████████░░░░░░░░░░░░░░
+17       6        0.000003           ✗ QUANTIZED  ████████████████████░░░░░░░░░░░░░░░
+7        6        0.000003           ✗ QUANTIZED  ████████████████████░░░░░░░░░░░░░░░
+22       6        0.000003           ✗ QUANTIZED  ████████████████████░░░░░░░░░░░░░░░
+20       6        0.000003           ✗ QUANTIZED  ████████████████████░░░░░░░░░░░░░░░
+6        6        0.000003           ✗ QUANTIZED  ███████████████████░░░░░░░░░░░░░░░░
+19       6        0.000003           ✗ QUANTIZED  ███████████████████░░░░░░░░░░░░░░░░
+5        6        0.000003           ✗ QUANTIZED  ███████████████████░░░░░░░░░░░░░░░░
+4        6        0.000003           ✗ QUANTIZED  ███████████████████░░░░░░░░░░░░░░░░
+3        6        0.000002           ✗ QUANTIZED  ████████████████░░░░░░░░░░░░░░░░░░░
+1        6        0.000002           ✗ QUANTIZED  ███████████████░░░░░░░░░░░░░░░░░░░░
+27       6        0.000002           ✗ QUANTIZED  ███████████░░░░░░░░░░░░░░░░░░░░░░░░
+30       6        0.000001           ✗ QUANTIZED  █████████░░░░░░░░░░░░░░░░░░░░░░░░░░
+28       6        0.000001           ✗ QUANTIZED  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+31       6        0.000000           ✗ QUANTIZED  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+32       1        0.000000           ✗ QUANTIZED  ██░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
+
+================================================================================
+SAMPLE LAYERS FROM KEPT BLOCKS:
+--------------------------------------------------------------------------------
+
+Block 0 (Score: 0.000004):
+  - model.layers.0.mlp.fc1
+  - model.layers.0.mlp.fc2
+  - model.layers.0.self_attn.dense
+  - model.layers.0.self_attn.k_proj
+  - model.layers.0.self_attn.q_proj
+
+Block 9 (Score: 0.000003):
+  - model.layers.9.mlp.fc1
+  - model.layers.9.mlp.fc2
+  - model.layers.9.self_attn.dense
+  - model.layers.9.self_attn.k_proj
+  - model.layers.9.self_attn.q_proj
+
+Block 10 (Score: 0.000004):
+  - model.layers.10.mlp.fc1
+  - model.layers.10.mlp.fc2
+  - model.layers.10.self_attn.dense
+  - model.layers.10.self_attn.k_proj
+  - model.layers.10.self_attn.q_proj
+
+================================================================================
+SAMPLE LAYERS FROM QUANTIZED BLOCKS:
+--------------------------------------------------------------------------------
+
+Block 12 (Score: 0.000003):
+  - model.layers.12.mlp.fc1
+  - model.layers.12.mlp.fc2
+  - model.layers.12.self_attn.dense
+  - model.layers.12.self_attn.k_proj
+  - model.layers.12.self_attn.q_proj
+
+Block 21 (Score: 0.000003):
+  - model.layers.21.mlp.fc1
+  - model.layers.21.mlp.fc2
+  - model.layers.21.self_attn.dense
+  - model.layers.21.self_attn.k_proj
+  - model.layers.21.self_attn.q_proj
+
+Block 14 (Score: 0.000003):
+  - model.layers.14.mlp.fc1
+  - model.layers.14.mlp.fc2
+  - model.layers.14.self_attn.dense
+  - model.layers.14.self_attn.k_proj
+  - model.layers.14.self_attn.q_proj
+
+================================================================================
+

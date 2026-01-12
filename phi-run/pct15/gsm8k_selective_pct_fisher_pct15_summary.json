@@ -1,0 +1,21 @@
+{
+  "mode": "selective",
+  "accuracy": 0.408,
+  "size_mb": 1786.2012329101562,
+  "peak_vram_gb": 11.629130363464355,
+  "time": 7603.6173412799835,
+  "args": {
+    "mode": "selective",
+    "samples": 500,
+    "selection_method": "pct",
+    "sensitivity_method": "fisher",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 64,
+    "budget_mb": 4096,
+    "percentile": 0.15,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95,
+    "fisher_clip_percentile": 99.0,
+    "fisher_clip_samples": 32
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "mode": "selective",
+  "accuracy": 0.35,
+  "size_mb": 2526.8262329101562,
+  "peak_vram_gb": 6.1426568031311035,
+  "time": 2947.4272549152374,
+  "args": {
+    "mode": "selective",
+    "samples": 200,
+    "selection_method": "block_aware",
+    "sensitivity_method": "fisher",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 64,
+    "budget_mb": 4096,
+    "percentile": 0.3,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95,
+    "fisher_clip_percentile": 99.0,
+    "fisher_clip_samples": 32,
+    "block_method": "transformer_blocks"
+  },
+  "correct": 70,
+  "total": 200
+}

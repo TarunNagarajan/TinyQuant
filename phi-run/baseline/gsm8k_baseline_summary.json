@@ -1,0 +1,21 @@
+{
+  "mode": "baseline",
+  "accuracy": 0.422,
+  "size_mb": 5301.826232910156,
+  "peak_vram_gb": 5.399276256561279,
+  "time": 4220.305682659149,
+  "args": {
+    "mode": "baseline",
+    "samples": 500,
+    "selection_method": "pct",
+    "sensitivity_method": "perturbation",
+    "sensitivity_dataset": "gsm8k",
+    "sensitivity_samples": 64,
+    "budget_mb": 4096,
+    "percentile": 0.15,
+    "sensitivity_ratio": 0.05,
+    "budget": 0.95,
+    "fisher_clip_percentile": 99.0,
+    "fisher_clip_samples": 32
+  }
+}
