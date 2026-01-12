@@ -124,7 +124,7 @@ class SelectiveQuantizer:
             print(f"\n[BLOCK SENSITIVITY RANKING]")
             for block_id, score in sorted_blocks[:10]:  # Top 10 blocks
                 block_layers = analyzer.blocks[block_id]
-                kept = "✓ KEPT" if any(layer in layers_to_keep for layer in block_layers) else "✗ QUANT"
+                kept = "[KEPT]" if any(layer in layers_to_keep for layer in block_layers) else "[QUANT]"
                 print(f"  Block {block_id:2d}: {score:.6f} ({len(block_layers):2d} layers) {kept}")
         
         return list(layers_to_keep)
@@ -237,7 +237,7 @@ class SelectiveQuantizer:
                  sensitivity_ratio=0.05, budget=0.95, verbose=True, invert_selection=False,
                  fisher_clip_percentile=99.0, fisher_clip_samples=32, block_method="transformer_blocks"):
 
-        # 1. Compute sensitivity if not already computed
+        # Compute sensitivity if not already computed
         if self.sensitivity_map is None:
             if verbose:
                 print(f"[COMPUTING SENSITIVITY] Method: {sensitivity_method}")
@@ -251,7 +251,7 @@ class SelectiveQuantizer:
 
         selection_method = selection_method.lower()
 
-        # CRITICAL FIX: Get Linear layer names FIRST
+        # Identify Linear layers
         linear_layer_names = set()
         for name, module in self.model.named_modules():
             if isinstance(module, nn.Linear):
@@ -272,7 +272,7 @@ class SelectiveQuantizer:
                 missing = len(linear_layer_names) - len(linear_sensitivity_map)
                 print(f"[WARNING] {missing} Linear layers missing sensitivity scores (will be quantized)")
 
-        # 2. Select layers to keep in high precision
+        # Select layers to keep in high precision
         if selection_method == "knapsack":
             if verbose:
                 print(f"[SELECTION METHOD] Knapsack with budget {budget_mb}MB")
@@ -289,7 +289,7 @@ class SelectiveQuantizer:
             )
         
         else:
-            # CRITICAL FIX: Compute threshold using ONLY Linear layer scores
+            # Compute threshold using ONLY Linear layer scores
             if selection_method == "pct":
                 threshold = SelectiveQuantizer.get_threshold_pct(linear_sensitivity_map, percentile)
             elif selection_method == "otsu":
@@ -306,7 +306,7 @@ class SelectiveQuantizer:
             if verbose:
                 print(f"[THRESHOLD COMPUTED] Method: {selection_method.upper()}, Value: {threshold:.6f}")
 
-            # Apply threshold to Linear layers only
+            # Apply threshold
             if invert_selection:
                 if verbose:
                     print("[INVERTED SELECTION] Keeping LOW sensitivity layers in FP16")
@@ -329,16 +329,16 @@ class SelectiveQuantizer:
             print(f"\n[DEBUG] Top 20 most sensitive LINEAR layers:")
             sorted_linear_layers = sorted(linear_sensitivity_map.items(), key=lambda x: x[1], reverse=True)
             for name, score in sorted_linear_layers[:20]:
-                kept = "✓ KEPT" if name in layers_to_keep else "✗ QUANT"
+                kept = "[KEPT]" if name in layers_to_keep else "[QUANT]"
                 print(f"  {name[:60]:60s} {score:.6f} {kept}")
             
             # Also show BOTTOM 20 (least sensitive)
             print(f"\n[DEBUG] Bottom 20 least sensitive LINEAR layers:")
             for name, score in sorted_linear_layers[-20:]:
-                kept = "✓ KEPT" if name in layers_to_keep else "✗ QUANT"
+                kept = "[KEPT]" if name in layers_to_keep else "[QUANT]"
                 print(f"  {name[:60]:60s} {score:.6f} {kept}")
 
-        # 3. Collect layers to quantize
+        # Collect layers to quantize
         layers_to_quantize = []
         total_linear = 0
         
@@ -351,7 +351,7 @@ class SelectiveQuantizer:
         if verbose:
             print(f"\n[QUANTIZING {len(layers_to_quantize)}/{total_linear} LAYERS TO INT4]")
 
-        # 4. Handle Accelerate dispatch if present
+        # Handle Accelerate dispatch if present
         is_dispatched = self._is_model_dispatched()
         target_device = None
         
@@ -394,7 +394,7 @@ class SelectiveQuantizer:
             if verbose:
                 print(f"[TARGET DEVICE] All layers will be placed on {target_device}")
 
-        # 5. Perform quantization with consistent device placement
+        # Perform quantization with consistent device placement
         for i, layer_name in enumerate(layers_to_quantize):
             if verbose and (i + 1) % 10 == 0:
                 print(f"[PROGRESS] {i + 1}/{len(layers_to_quantize)} layers quantized")
@@ -408,7 +408,7 @@ class SelectiveQuantizer:
                     print(f"[WARNING] Failed to quantize layer {layer_name}: {str(e)}")
                 continue
 
-        # 6. Final device consolidation - be careful not to affect kept layers
+        # Final device consolidation - be careful not to affect kept layers
         if is_dispatched and target_device is not None:
             if verbose:
                 print(f"[FINAL CONSOLIDATION] Ensuring all parameters on {target_device}...")
@@ -440,7 +440,7 @@ class SelectiveQuantizer:
                 if verbose:
                     print(f"[WARNING] Consolidation had issues: {e}")
         
-        # Additional check: verify no hooks remain and do final cleanup
+        # Verify no hooks remain and do final cleanup
         if verbose:
             print("[FINAL CHECK] Removing any remaining Accelerate hooks...")
         
@@ -465,10 +465,10 @@ class SelectiveQuantizer:
                 except:
                     pass
 
-        # 7. Set model to eval mode
+        # Set model to eval mode
         self.model.eval()
 
-        # 8. Optional validation
+        # Optional validation
         if verbose:
             print("[VALIDATING] Testing model forward pass...")
         
@@ -488,11 +488,11 @@ class SelectiveQuantizer:
                 print(f"[WARNING] Validation failed: {str(e)}")
                 print("[INFO] This may be normal for some model architectures")
 
-        # 9. Final cleanup
+        # Final cleanup
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        # 10. VERIFICATION: Check what actually happened
+        # Verification: Check what actually happened
         if verbose:
             print("\n[VERIFICATION] Checking actual layer types after quantization:")
             fp16_actual = 0
@@ -505,12 +505,12 @@ class SelectiveQuantizer:
                     if name in layers_to_keep:
                         fp16_actual += 1
                     else:
-                        wrong_type.append(f"  ⚠️  {name} was supposed to be quantized but is still Linear")
+                        wrong_type.append(f"  [WARN]  {name} was supposed to be quantized but is still Linear")
                 elif isinstance(module, bnb.nn.Linear4bit):
                     # This is INT4
                     int4_actual += 1
                     if name in layers_to_keep:
-                        wrong_type.append(f"  ⚠️  {name} was supposed to be kept FP16 but is Linear4bit")
+                        wrong_type.append(f"  [WARN]  {name} was supposed to be kept FP16 but is Linear4bit")
             
             if wrong_type:
                 print("\n[WARNING] Type mismatches detected:")
@@ -521,11 +521,11 @@ class SelectiveQuantizer:
             print(f"[EXPECTED COUNTS] FP16: {len(layers_to_keep)}, INT4: {len(layers_to_quantize)}")
             
             if fp16_actual == len(layers_to_keep) and int4_actual == len(layers_to_quantize):
-                print("[SUCCESS] ✓ All layers are correct types!")
+                print("[SUCCESS] All layers are correct types!")
             else:
-                print("[WARNING] ✗ Layer type mismatch detected!")
+                print("[WARNING] Layer type mismatch detected!")
 
-        # 11. Final report and return
+        # Final report and return
         unchanged_count = total_linear - len(layers_to_quantize)
         compression_ratio = len(layers_to_quantize) / total_linear if total_linear > 0 else 0
         

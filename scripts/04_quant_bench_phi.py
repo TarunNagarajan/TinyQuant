@@ -112,7 +112,7 @@ def visualize_block_structure(model, sensitivity_map, selection_method, percenti
     for block_id, score in sorted_blocks:
         block_layers = analyzer.blocks[block_id]
         kept = block_id in blocks_to_keep_ids
-        status = "✓ KEPT FP16" if kept else "✗ QUANTIZED"
+        status = "[KEPT FP16]" if kept else "[QUANTIZED]"
         
         # Visual bar
         bar_length = int((score / max(block_scores.values())) * 35)

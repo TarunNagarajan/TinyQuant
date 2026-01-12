@@ -11,13 +11,7 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None,
     """
     Compute Fisher Information Matrix diagonal approximation for each layer.
     
-    Fisher Information measures the expected squared gradient of the loss w.r.t. 
-    each parameter, approximating how much the model's predictions depend on that 
-    parameter. Higher Fisher scores indicate parameters that are more critical for 
-    the model's current task performance.
-    
-    This implementation uses adaptive gradient clipping to ensure robustness against
-    outlier samples that could dominate the Fisher computation.
+    Uses adaptive gradient clipping to ensure robustness against outlier samples.
     
     Args:
         model: The language model (in eval mode)
@@ -31,16 +25,7 @@ def compute_fisher(model, tokenizer, dsname, reduction="mean", n_samples=None,
     
     Returns:
         sensitivity_map: Dict mapping module names to Fisher information scores
-                        (normalized by parameter count for fair comparison)
-    
-    Example:
-        >>> from transformers import AutoModelForCausalLM, AutoTokenizer
-        >>> model = AutoModelForCausalLM.from_pretrained("meta-llama/Llama-3.2-3B")
-        >>> tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-3B")
-        >>> fisher_scores = compute_fisher(model, tokenizer, "gsm8k", n_samples=128)
-        >>> # Higher scores = more important layers
-        >>> sorted_layers = sorted(fisher_scores.items(), key=lambda x: x[1], reverse=True)
-        >>> print(f"Most important layer: {sorted_layers[0]}")
+                        (normalized by parameter count)
     """
     assert reduction in ("mean", "sum"), f"reduction must be 'mean' or 'sum', got {reduction}"
     
@@ -381,7 +366,7 @@ def _validate_fisher_scores(sensitivity_map, model):
                 f"Fisher computation should strip '.weight' from parameter names."
             )
     
-    print(f"[{model.__class__.__name__}] [VALIDATION] ✓ Fisher scores passed sanity checks")
+    print(f"[{model.__class__.__name__}] [VALIDATION] Fisher scores passed sanity checks")
 
 
 def compare_fisher_methods(model, tokenizer, dsname, n_samples=128):
